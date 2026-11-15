@@ -35,7 +35,9 @@ button.sel{color:#3daa76;border-color:#3daa76}
 .pill.x{background:#f3e4e2;color:var(--bad)}
 .login{max-width:380px;margin:40px auto;padding:0 16px}
 table{width:100%;border-collapse:collapse;font-size:14px}td{padding:6px 4px;border-top:1px solid var(--line)}
-td.th{cursor:pointer;user-select:none;white-space:nowrap}td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+td.th{cursor:pointer;user-select:none;white-space:nowrap}.lg{display:flex;flex-wrap:wrap;justify-content:center;gap:6px 14px;margin-top:8px;font-size:13px}.lg i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px}
+td.nw{white-space:nowrap}.ov{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px;z-index:50}.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;max-width:560px;width:100%;max-height:85vh;overflow:auto}
+td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 tr.me td{background:#e2f3e7}.row.c{padding:7px 0}.row.c .rank{font-size:17px}.row.c .pts{font-size:16px}.row.me{background:#e2f3e7;margin:0 -14px;padding:7px 14px}tr.off{opacity:.5}tr.sel td{background:#fbeaf1}
 </style></head><body><div id="app"></div>
 <script type="module">
@@ -58,7 +60,7 @@ const ADMIN_EMAIL = "brock.lange8@gmail.com";
 const app = initializeApp(firebaseConfig), auth = getAuth(app), db = getFirestore(app);
 const MULT = {regular:1, signature:1.25, major:2};
 const TZ = {"Eastern":"America/New_York","Central":"America/Chicago","Mountain":"America/Denver","Pacific":"America/Los_Angeles","Hawaii":"Pacific/Honolulu"};
-const S = {ps:{k:null,d:1}, fs:{k:"odds",d:1}, draft:null, users:[], sort:"odds-asc", user:null, tours:[], picks:[], tab:"picks", cur:null, q:"", now:Date.now(), msg:"", err:"", parsed:null, adm:{name:"",type:"regular",date:"",tz:"America/New_York",paste:"",rpaste:""}, mode:"in"};
+const S = {sched:[], modal:null, ps:{k:null,d:1}, fs:{k:"odds",d:1}, draft:null, users:[], sort:"odds-asc", user:null, tours:[], picks:[], tab:"picks", cur:null, q:"", now:Date.now(), msg:"", err:"", parsed:null, adm:{name:"",type:"regular",date:"",tz:"America/New_York",paste:"",rpaste:""}, mode:"in"};
 const $ = s => document.querySelector(s);
 const esc = s => String(s??"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const keyOf = n => n.toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,"");
@@ -102,6 +104,11 @@ function startData(){
     render();
   }, e=>{S.err=e.message;render();}));
   unsub.push(onSnapshot(collection(db,"users"), s=>{ S.users = s.docs.map(d=>({uid:d.id,...d.data()})); render(); }));
+  unsub.push(onSnapshot(collection(db,"schedule"), s=>{
+    const docs=s.docs.map(d=>({id:d.id,...d.data()})), y=String(new Date().getFullYear());
+    const cur=docs.find(d=>d.id===y)||docs.sort((a,b)=>b.id.localeCompare(a.id))[0];
+    S.sched=cur?.events||[]; S.schedYear=cur?.id||y; render();
+  }, ()=>{}));
   unsub.push(onSnapshot(collection(db,"picks"), s=>{ S.picks = s.docs.map(d=>d.data()); render(); }));
 }
 onAuthStateChanged(auth, u=>{
@@ -116,6 +123,8 @@ const A = window.A = {
   tab(t){S.tab=t;S.msg=S.err="";render(true)},
   cur(id){S.cur=id;S.parsed=null;S.draft=null;render(true)},
   q(v){S.q=v;render(true,"q")},
+  open(id){S.modal=id;render(true)},
+  close(){S.modal=null;render(true)},
   hs(t,k){const st=t==="p"?S.ps:S.fs; if(st.k===k) st.d*=-1; else {st.k=k; st.d=k==="pts"?-1:1} render(true)},
   mode(m){S.mode=m;S.err="";render(true)},
   async login(){
@@ -230,16 +239,75 @@ function golfers(){
 <div class="sticky" style="display:flex;gap:8px"><input id="q" style="flex:1;min-width:0" placeholder="Search" value="${esc(S.q)}" oninput="A.q(this.value)"><button class="pink" style="margin:4px 0 10px;white-space:nowrap" onclick="A.submit()" ${can?"":"disabled"}>Submit pick</button></div>
 <div class="card" id="golfers" style="overflow-x:auto"><table>${heads("f")}${rows.map(r=>r.h).join("")||"<tr><td colspan=7 class='mut'>No matches.</td></tr>"}</table></div>`;
 }
-function standView(){
-  const us=S.users.map(u=>({uid:u.uid,name:u.name||"Player",tot:0}));
-  const weeks=S.tours.filter(t=>S.picks.some(p=>p.tid===t.id)).map(t=>({t,rows:us.map(u=>{
-    const p=S.picks.find(x=>x.tid===t.id&&x.uid===u.uid), x=p?(pts(t,p)||0):null; if(x) u.tot+=x;
-    return {u,p,x,r:p?pos(t,p.key):null}})}));
-  us.sort((a,b)=>b.tot-a.tot||a.name.localeCompare(b.name));
-  const cap=ty=>(ty||"regular")[0].toUpperCase()+(ty||"regular").slice(1);
-  return `<div class="card" style="padding:10px 14px"><h2 style="margin-bottom:4px;font-size:18px">Season standings</h2>${us.length?us.map((u,i)=>`<div class="row c ${u.uid===S.user.uid?"me":""}"><div class="rank">${i+1}</div><div class="grow nm">${esc(u.name)}</div><div class="pts">${u.tot.toFixed(1)}</div></div>`).join(""):"<div class='mut'>Standings appear once everyone has signed up.</div>"}</div>`+
-  weeks.reverse().map(({t,rows})=>`<div class="card" style="overflow-x:auto"><h3>${esc(t.name)}</h3><div class="mut" style="margin-bottom:8px">${cap(t.type)} event · ${MULT[t.type]||1}× multiplier</div><table>${rows.sort((a,b)=>(b.x??-1)-(a.x??-1)||a.u.name.localeCompare(b.u.name)).map(({u,p,x,r})=>`<tr${u.uid===S.user.uid?' class="me"':""}><td class="nm">${esc(u.name)}</td>${p?`<td>${esc(p.name)}</td><td class="n">${fmtOdds(t.entries.find(e=>e.key===p.key)?.odds)}</td><td class="n mut">${r==null?"":r===0?"CUT/WD":"P"+r}</td><td class="n"><b>${fmtPts(x)}</b></td>`:`<td class="mut">Didn’t pick</td><td class="n mut">—</td><td class="n mut">—</td><td class="n"><b>0.0</b></td>`}</tr>`).join("")}</table></div>`).join("");
+const cap=ty=>(ty||"regular")[0].toUpperCase()+(ty||"regular").slice(1);
+const fd=d=>new Date(d+"T12:00:00Z").toLocaleDateString("en-US",{month:"short",day:"numeric",timeZone:"UTC"});
+const addDays=(d,n)=>new Date(Date.parse(d)+n*864e5).toISOString().slice(0,10);
+const overlap=(a,b)=>{const w=x=>new Set(String(x).toLowerCase().replace(/[^a-z0-9 ]/g,"").split(/\s+/).filter(y=>y.length>2));const A=w(a),B=w(b);return [...A].filter(y=>B.has(y)).length};
+const isOver=t=>S.now>Date.parse(t.date)+4.5*864e5;
+function tourRows(t){return S.users.map(u=>{const p=S.picks.find(x=>x.tid===t.id&&x.uid===u.uid);return {u,p,e:p?t.entries.find(x=>x.key===p.key):null,r:p?pos(t,p.key):null,x:p?(pts(t,p)||0):null}})}
+function winnerOf(t){
+  const rs=tourRows(t).filter(r=>r.p); if(!rs.length) return null;
+  const best=Math.max(...rs.map(r=>r.x)); if(!(best>0)) return null;
+  const w=rs.filter(r=>r.x===best);
+  return {n:w.map(r=>r.u.name||"Player").join(", "), g:w.map(r=>r.p.name).join(" / "), pt:best};
 }
+function standView(){return boardHtml()+chartCard()}
+function chartCard(){
+  const tours=S.tours.filter(t=>S.picks.some(p=>p.tid===t.id));
+  const us=S.users.map(u=>({uid:u.uid,name:u.name||"Player",vals:[],total:0}));
+  tours.forEach(t=>us.forEach(u=>{const p=S.picks.find(x=>x.tid===t.id&&x.uid===u.uid);u.total+=p?(pts(t,p)||0):0;u.vals.push(u.total)}));
+  const byName=[...us].sort((a,b)=>a.name.localeCompare(b.name));
+  us.forEach(u=>{u.color=COLORS[byName.indexOf(u)%COLORS.length];u.me=u.uid===S.user.uid});
+  const legend=[...us].sort((a,b)=>b.total-a.total||a.name.localeCompare(b.name));
+  return `<div class="card"><h3 style="margin-bottom:6px">Points over the season</h3>${lineChart(tours.map(t=>t.name),us,legend)}</div>`;
+}
+const COLORS=["#1f8f5f","#d9467c","#d4a017","#3b82c4","#8b5cf6","#e67e22","#0e9aa7","#a3a3a3"];
+function lineChart(labels,series,legend){
+  const E=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const n=labels.length; if(!n) return `<div class="mut">The chart appears once a tournament has points.</div>`;
+  const W=340,H=300,L=40,R=12,T=12,B=18,pw=W-L-R,ph=H-T-B;
+  const max=Math.max(1,...series.flatMap(s=>s.vals));
+  const nice=r=>{const p=Math.pow(10,Math.floor(Math.log10(r))),f=r/p;return (f<=1?1:f<=2?2:f<=5?5:10)*p};
+  const step=nice(max/4), top=Math.ceil(max/step)*step;
+  const x=i=>L+(n===1?pw/2:i*pw/(n-1)), y=v=>T+ph-v/top*ph;
+  const fv=v=>v>=1000?(v/1000).toFixed(1).replace(/\.0$/,"")+"k":String(Math.round(v));
+  let g="";
+  for(let v=0;v<=top+1e-9;v+=step) g+=`<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" style="stroke:var(--line)"/><text x="${L-5}" y="${y(v)+3}" text-anchor="end" style="fill:var(--mut);font-size:9px">${fv(v)}</text>`;
+  const lines=[...series].sort((a,b)=>a.me-b.me).map(s=>`<polyline fill="none" stroke-linejoin="round" stroke-linecap="round" stroke-width="${s.me?3.2:2}" style="stroke:${s.color}" points="${s.vals.map((v,i)=>x(i).toFixed(1)+","+y(v).toFixed(1)).join(" ")}"/>`+(n<=20?s.vals.map((v,i)=>`<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="${s.me?3.4:2.6}" style="fill:${s.color}"><title>${E(s.name)} · ${E(labels[i])}: ${v.toFixed(1)}</title></circle>`).join(""):"")).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block" role="img" aria-label="Cumulative points by tournament">${g}${lines}</svg><div class="lg">${legend.map(s=>`<span><i style="background:${s.color}"></i>${E(s.name)}</span>`).join("")}</div>`;
+}
+function boardHtml(){
+  const us=S.users.map(u=>({uid:u.uid,name:u.name||"Player",tot:0}));
+  S.picks.forEach(p=>{const t=S.tours.find(x=>x.id===p.tid),u=us.find(x=>x.uid===p.uid); if(t&&u) u.tot+=pts(t,p)||0});
+  us.sort((a,b)=>b.tot-a.tot||a.name.localeCompare(b.name));
+  return `<div class="card" style="padding:10px 14px"><h2 style="margin-bottom:4px;font-size:18px">Season standings</h2>${us.length?us.map((u,i)=>`<div class="row c ${u.uid===S.user.uid?"me":""}"><div class="rank">${i+1}</div><div class="grow nm">${esc(u.name)}</div><div class="pts">${u.tot.toFixed(1)}</div></div>`).join(""):"<div class='mut'>Standings appear once everyone has signed up.</div>"}</div>`;
+}
+function cardHtml(t){
+  const rows=tourRows(t).sort((a,b)=>(b.x??-1)-(a.x??-1)||(a.u.name||"").localeCompare(b.u.name||""));
+  return `<h3>${esc(t.name)}</h3><div class="mut" style="margin-bottom:8px">${cap(t.type)} event · ${MULT[t.type]||1}× multiplier</div><table>${rows.map(({u,p,e,r,x})=>`<tr${u.uid===S.user.uid?' class="me"':""}><td class="nm">${esc(u.name||"Player")}</td>${p?`<td>${esc(p.name)}</td><td class="n">${fmtOdds(e?.odds)}</td><td class="n mut">${r==null?"":r===0?"CUT/WD":"P"+r}</td><td class="n"><b>${fmtPts(x)}</b></td>`:`<td class="mut">Didn’t pick</td><td class="n mut">—</td><td class="n mut">—</td><td class="n"><b>0.0</b></td>`}</tr>`).join("")}</table>`;
+}
+function scheduleView(){
+  const used=new Set();
+  const rows=S.sched.map(ev=>{
+    const start=ev.start.slice(0,10), end=ev.end.slice(0,10), sib=S.sched.filter(o=>o.start.slice(0,10)===start).length;
+    const c=S.tours.filter(t=>!used.has(t.id)&&Math.abs(Date.parse(t.date)-Date.parse(start))<=864e5).sort((a,b)=>overlap(b.name,ev.name)-overlap(a.name,ev.name));
+    const t=c.length&&(overlap(c[0].name,ev.name)>0||sib===1)?c[0]:null;
+    if(t) used.add(t.id);
+    return {start,end,name:t?t.name:ev.name,t};
+  });
+  S.tours.filter(t=>!used.has(t.id)).forEach(t=>rows.push({start:t.date,end:addDays(t.date,3),name:t.name,t}));
+  rows.sort((a,b)=>a.start.localeCompare(b.start)||a.name.localeCompare(b.name));
+  if(!rows.length) return `<div class="card">No tournaments yet.</div>`;
+  return `<div class="card" style="overflow-x:auto"><h2 style="margin-bottom:6px;font-size:18px">${esc(S.schedYear||"")} Schedule</h2><table><tr class="mut"><td>Start</td><td>End</td><td>Tournament</td><td>Winner</td><td>Golfer</td><td class="n">Pts</td></tr>${rows.map(({start,end,name,t})=>{
+    const over=t&&isOver(t), w=over?winnerOf(t):null, live=t&&!over&&S.now>=Date.parse(t.date);
+    return `<tr><td class="nw">${fd(start)}</td><td class="nw">${fd(end)}</td><td>${t?`<a class="lnk" href="#" onclick="A.open('${t.id}');return false">${esc(name)}</a>`:esc(name)}</td><td class="nw">${w?esc(w.n):live?`<span class="mut">In progress</span>`:"—"}</td><td>${w?esc(w.g):"—"}</td><td class="n nw">${w?`<b>${w.pt.toFixed(1)}</b>`:"—"}</td></tr>`;
+  }).join("")}</table></div>`;
+}
+function modalHtml(){
+  const t=S.tours.find(x=>x.id===S.modal); if(!t) return "";
+  return `<div class="ov" onclick="if(event.target===this)A.close()"><div class="panel"><button class="sm" style="float:right;background:#0b3d2c;border-color:#0b3d2c;color:#fff !important" onclick="A.close()">Close</button>${cardHtml(t)}</div></div>`;
+}
+document.addEventListener("keydown",e=>{ if(e.key==="Escape"&&S.modal){S.modal=null;render(true)} });
 function adminView(){
   const a=S.adm, t=curT();
   const prev=S.parsed?`<div class="card"><b>${S.parsed.length} golfers found</b>${S.parsed.map((x,i)=>`<div class="row" ${x.odds==null?'style="background:#fbeaf1"':""}><div class="grow">${esc(x.name)}<div class="mut">${tourTime({tz:a.tz},x.tee)}</div></div><input style="width:84px;margin:0" inputmode="numeric" placeholder="odds" value="${x.odds??""}" onchange="A.odds(${i},this.value)"></div>`).join("")}<button style="margin-top:10px;width:100%" onclick="A.save()">Save tournament</button></div>`:"";
@@ -260,10 +328,10 @@ function render(force,focus){
   const ae=document.activeElement;
   if(!force && ae && ["INPUT","TEXTAREA","SELECT"].includes(ae.tagName)) return;
   if(!S.user){ $("#app").innerHTML=loginView(); return; }
-  const tabs=[["picks","Picks"],["stand","Standings"],...(isAdmin()?[["admin","Admin"]]:[])];
+  const tabs=[["picks","Picks"],["sched","Schedule"],["stand","Standings"],...(isAdmin()?[["admin","Admin"]]:[])];
   $("#app").innerHTML=`<header><h1>Green Jackets Pick’em League</h1><div class="sub"><span>${esc(S.user.displayName||S.user.email)}</span><a onclick="A.out()">Sign out</a></div>
 <nav>${tabs.map(([k,l])=>`<button class="${S.tab===k?"on":""}" onclick="A.tab('${k}')">${l}</button>`).join("")}</nav></header>
-<main>${S.tab==="picks"?picksView():S.tab==="stand"?standView():adminView()}</main>`;
+<main>${S.tab==="picks"?picksView():S.tab==="stand"?standView():S.tab==="sched"?scheduleView():adminView()}</main>${S.modal?modalHtml():""}`;
   if(focus==="q"){const el=$("#q");el.focus();el.setSelectionRange(el.value.length,el.value.length)}
 }
 render(true);
