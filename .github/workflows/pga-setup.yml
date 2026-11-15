@@ -1,0 +1,31 @@
+name: Weekly field and odds
+on:
+ schedule:
+   - cron: "23 3,15 * * 2,3,4"   # Tue-Thu, twice a day (UTC). Stops by itself once the first group tees off.
+ workflow_dispatch:
+   inputs:
+     tournament_id:
+       description: "Optional tournament id, e.g. R2026558 (blank = current event)"
+       required: false
+     dry:
+       description: "Dry run: show what would be saved, write nothing"
+       type: boolean
+       default: true
+jobs:
+ setup:
+   runs-on: ubuntu-latest
+   steps:
+     - uses: actions/checkout@v4
+     - uses: actions/setup-node@v4
+       with:
+         node-version: 20
+     - name: Run pga-setup.js
+       env:
+         FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+         PGA_API_KEY: ${{ secrets.PGA_API_KEY }}
+         TOURNAMENT_ID: ${{ inputs.tournament_id }}
+         DRY: ${{ inputs.dry && '1' || '' }}
+       run: |
+         cd "$(dirname "$(find . -name pga-setup.js -not -path '*/node_modules/*' | head -1)")"
+         npm install --no-audit --no-fund
+         node pga-setup.js
