@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Green Jackets Pick’em League</title>
+<style>
+:root{--g:#0b3d2c;--g2:#165a42;--cream:#f7f4ea;--card:#fffefa;--pink:#d9467c;--ink:#18261f;--mut:#667a70;--line:#e3ddc9;--bad:#a8322d}
+*{box-sizing:border-box}body{margin:0;background:var(--cream);color:var(--ink);font:16px/1.45 system-ui,-apple-system,sans-serif}
+h1,h2,h3{font-family:Georgia,'Times New Roman',serif;margin:0}
+header{background:var(--g);color:#fff;padding:18px 16px 0}
+header h1{font-size:22px;font-weight:700;letter-spacing:.2px}
+header .sub{color:#b9d3c6;font-size:13px;margin-top:2px;display:flex;justify-content:space-between}
+header a{color:#fff;text-decoration:underline;cursor:pointer}
+nav{display:flex;gap:4px;margin-top:14px}
+nav button{flex:1;background:none;border:0;color:#b9d3c6;padding:11px 0;font:600 15px system-ui;border-bottom:3px solid transparent}
+nav button.on{color:#fff;border-color:var(--pink)}
+main{max-width:640px;margin:0 auto;padding:14px 14px 60px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px}
+.row{display:flex;align-items:center;gap:10px;padding:11px 0;border-top:1px solid var(--line)}
+.row:first-child{border-top:0}.grow{flex:1;min-width:0}
+.nm{font-weight:600}.mut{color:var(--mut);font-size:13px}
+.odds{font-variant-numeric:tabular-nums;font-weight:600;color:var(--g2);min-width:46px;text-align:right}
+.row.off{opacity:.5}.row.mine{background:#fbeaf1;margin:0 -14px;padding:11px 14px}
+button,.btn{font:600 14px system-ui;border-radius:8px;border:1px solid var(--g);background:var(--g);color:#fff;padding:9px 14px}
+button.ghost{background:none;color:var(--g)}button.sm{padding:6px 10px;font-size:13px}button.pink{background:var(--pink);border-color:var(--pink)}
+button:disabled{opacity:.4}
+input,select,textarea{width:100%;font:16px system-ui;padding:10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);margin:4px 0 10px}
+textarea{min-height:120px;font:13px ui-monospace,monospace}
+label{font-size:13px;color:var(--mut);font-weight:600}
+.err{color:var(--bad);font-size:14px;margin:6px 0}
+.sticky{position:sticky;top:0;z-index:5;background:var(--cream);padding:6px 0 10px}
+button.sel{color:#3daa76;border-color:#3daa76}
+.lnk{color:var(--g2);font-weight:600;text-decoration:none;cursor:pointer}.lnk:hover{text-decoration:underline}.ok{color:var(--g2);font-size:14px;margin:6px 0}
+.rank{font:700 20px Georgia,serif;color:var(--g);width:28px}.pts{font:700 18px Georgia,serif;color:var(--g)}
+.pill{font-size:12px;border-radius:99px;padding:2px 8px;background:#e5efe9;color:var(--g2);font-weight:600}
+.pill.x{background:#f3e4e2;color:var(--bad)}
+.login{max-width:380px;margin:40px auto;padding:0 16px}
+table{width:100%;border-collapse:collapse;font-size:14px}td{padding:6px 4px;border-top:1px solid var(--line)}
+td.th{cursor:pointer;user-select:none;white-space:nowrap}td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+tr.me td{background:#e2f3e7}.row.c{padding:7px 0}.row.c .rank{font-size:17px}.row.c .pts{font-size:16px}.row.me{background:#e2f3e7;margin:0 -14px;padding:7px 14px}tr.off{opacity:.5}tr.sel td{background:#fbeaf1}
+</style></head><body><div id="app"></div>
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {getAuth,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,GoogleAuthProvider,signInWithPopup,signOut,updateProfile} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {getFirestore,collection,doc,onSnapshot,setDoc,writeBatch,updateDoc} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+/* ====== 1. PASTE YOUR FIREBASE CONFIG HERE ====== */
+const firebaseConfig = {
+  apiKey: "AIzaSyBFl8taqmERXQNpAMFxmNchVMWyjfffZXE",
+  authDomain: "green-jackets-pickem-league.firebaseapp.com",
+  projectId: "green-jackets-pickem-league",
+  storageBucket: "green-jackets-pickem-league.firebasestorage.app",
+  messagingSenderId: "418496497256",
+  appId: "1:418496497256:web:dd8885d533bd8d8f7d1ddd"
+};
+/* ====== 2. PUT YOUR ADMIN EMAIL HERE (must match firestore.rules) ====== */
+const ADMIN_EMAIL = "brock.lange8@gmail.com";
+
+const app = initializeApp(firebaseConfig), auth = getAuth(app), db = getFirestore(app);
+const MULT = {regular:1, signature:1.25, major:2};
+const TZ = {"Eastern":"America/New_York","Central":"America/Chicago","Mountain":"America/Denver","Pacific":"America/Los_Angeles","Hawaii":"Pacific/Honolulu"};
+const S = {ps:{k:null,d:1}, fs:{k:"odds",d:1}, draft:null, users:[], sort:"odds-asc", user:null, tours:[], picks:[], tab:"picks", cur:null, q:"", now:Date.now(), msg:"", err:"", parsed:null, adm:{name:"",type:"regular",date:"",tz:"America/New_York",paste:"",rpaste:""}, mode:"in"};
+const $ = s => document.querySelector(s);
+const esc = s => String(s??"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const keyOf = n => n.toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,"");
+const isAdmin = () => S.user && S.user.email === ADMIN_EMAIL;
+const fmtOdds = o => o==null ? "—" : (o>0?"+":"")+o;
+const tourTime = (t,ms) => new Date(ms).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",timeZone:t.tz});
+
+function zonedMs(date, time, tz){
+  const [y,mo,d] = date.split("-").map(Number);
+  const m = time.match(/(\d{1,2}):(\d{2})\s*([AP])M/i); let h = +m[1]%12; if(m[3].toUpperCase()==="P") h+=12;
+  const guess = Date.UTC(y,mo-1,d,h,+m[2]);
+  const off = ms => { const p = Object.fromEntries(new Intl.DateTimeFormat("en-US",{timeZone:tz,hourCycle:"h23",year:"numeric",month:"numeric",day:"numeric",hour:"numeric",minute:"numeric"}).formatToParts(new Date(ms)).map(x=>[x.type,x.value]));
+    return Date.UTC(p.year,p.month-1,p.day,p.hour,p.minute) - ms; };
+  return guess - off(guess - off(guess));
+}
+function parseField(text, date, tz){
+  const out = [];
+  for(const line of text.split(/\r?\n/)){
+    const c = line.split("\t").map(x=>x.trim());
+    const ti = c.findIndex(x=>/^\d{1,2}:\d{2}\s*[AP]M$/i.test(x));
+    if(ti<0 || !c[1]) continue;
+    const oc = c.slice(ti+1).find(x=>/^\+?\d+$/.test(x));
+    out.push({name:c[1], key:keyOf(c[1]), odds: oc?parseInt(oc,10):null, tee:zonedMs(date,c[ti],tz)});
+  }
+  return out;
+}
+function pos(t,key){ return t.results?.[key]; }
+function pts(t,p){
+  const e = t.entries.find(x=>x.key===p.key), r = pos(t,p.key);
+  if(!e || r==null) return null;
+  return r>0 && e.odds ? e.odds / r * (MULT[t.type]||1) : 0;
+}
+const fmtPts = x => x==null ? "—" : x.toFixed(1);
+
+/* ---------- data ---------- */
+let unsub = [];
+function startData(){
+  unsub.push(onSnapshot(collection(db,"tournaments"), s=>{
+    S.tours = s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>a.date.localeCompare(b.date));
+    if(!S.cur){ const now=new Date(); S.cur = (S.tours.find(t=>new Date(t.date)>new Date(now-4*864e5))||S.tours.at(-1)||{}).id||null; }
+    render();
+  }, e=>{S.err=e.message;render();}));
+  unsub.push(onSnapshot(collection(db,"users"), s=>{ S.users = s.docs.map(d=>({uid:d.id,...d.data()})); render(); }));
+  unsub.push(onSnapshot(collection(db,"picks"), s=>{ S.picks = s.docs.map(d=>d.data()); render(); }));
+}
+onAuthStateChanged(auth, u=>{
+  S.user = u; unsub.forEach(f=>f()); unsub=[];
+  if(u){ setDoc(doc(db,"users",u.uid),{name:u.displayName||u.email.split("@")[0]},{merge:true}); startData(); }
+  render(true);
+});
+setInterval(()=>{S.now=Date.now();render()},30000);
+
+/* ---------- actions ---------- */
+const A = window.A = {
+  tab(t){S.tab=t;S.msg=S.err="";render(true)},
+  cur(id){S.cur=id;S.parsed=null;S.draft=null;render(true)},
+  q(v){S.q=v;render(true,"q")},
+  hs(t,k){const st=t==="p"?S.ps:S.fs; if(st.k===k) st.d*=-1; else {st.k=k; st.d=k==="pts"?-1:1} render(true)},
+  mode(m){S.mode=m;S.err="";render(true)},
+  async login(){
+    const email=$("#em").value.trim(), pw=$("#pw").value; S.err="";
+    try{
+      if(S.mode==="up"){ const n=$("#dn").value.trim()||email.split("@")[0];
+        const c=await createUserWithEmailAndPassword(auth,email,pw); await updateProfile(c.user,{displayName:n});
+        await setDoc(doc(db,"users",c.user.uid),{name:n},{merge:true}); S.user={...c.user,displayName:n}; }
+      else await signInWithEmailAndPassword(auth,email,pw);
+    }catch(e){S.err=e.message.replace("Firebase: ","");render(true)}
+  },
+  async google(){ try{await signInWithPopup(auth,new GoogleAuthProvider())}catch(e){S.err=e.message;render(true)} },
+  out(){signOut(auth)},
+  select(k){S.draft=S.draft===k?null:k;render(true)},
+  async submit(){
+    const key=S.draft; if(!key) return;
+    const t=curT(); S.err="";
+    const mine=S.picks.find(p=>p.tid===t.id&&p.uid===S.user.uid);
+    const b=writeBatch(db);
+    if(mine) b.delete(doc(db,"picks",`${t.id}__${mine.key}`));
+    b.set(doc(db,"picks",`${t.id}__${key}`),{tid:t.id,key,name:t.entries.find(e=>e.key===key).name,uid:S.user.uid,who:S.user.displayName||S.user.email.split("@")[0]});
+    try{await b.commit();S.draft=null;S.tab="picks";setTimeout(()=>scrollTo(0,0),0)}catch(e){S.err="Couldn’t save that pick. Someone may have just taken this golfer, or your current pick has already teed off."}
+    render(true);
+  },
+  async clear(tid,key){ if(!confirm("Clear this pick?"))return; const b=writeBatch(db); b.delete(doc(db,"picks",`${tid}__${key}`)); await b.commit(); },
+  adm(f,v){S.adm[f]=v},
+  parse(){
+    const a=S.adm; if(!a.name||!a.date||!a.paste){S.err="Add a name, the Round 1 date, and the pasted table.";return render(true)}
+    S.parsed=parseField(a.paste,a.date,a.tz); S.err=S.parsed.length?"":"No golfers found. Paste the table with the tee time column."; render(true);
+  },
+  odds(i,v){S.parsed[i].odds=v===""?null:parseInt(v,10)},
+  async save(){
+    const a=S.adm, p=S.parsed;
+    if(p.some(x=>x.odds==null||isNaN(x.odds))){S.err="Fill in the missing odds first (highlighted rows).";return render(true)}
+    const id=keyOf(a.name)+"_"+a.date, tee={};
+    p.forEach(x=>tee[x.key]=x.tee);
+    const old=S.tours.find(t=>t.id===id);
+    await setDoc(doc(db,"tournaments",id),{name:a.name,type:a.type,date:a.date,tz:a.tz,entries:p,tee,results:old?.results||{}});
+    S.cur=id;S.parsed=null;S.adm.paste="";S.msg=`Saved ${p.length} entries for ${a.name}.`;S.tab="picks";render(true);
+  },
+  async results(){
+    const t=curT(); if(!t)return; const lines=S.adm.rpaste.split(/\r?\n/).map(l=>l.toLowerCase()); const res={...(t.results||{})}, lv={...(t.live||{})};
+    const hdr=lines.map(l=>l.split("\t").map(x=>x.trim())).find(c=>c.includes("thru")&&(c.includes("score")||c.includes("total")||c.includes("to par")));
+    const si=hdr?hdr.findIndex(x=>["score","total","to par"].includes(x)):-1, ti=hdr?hdr.indexOf("thru"):-1; let hit=0; const miss=[];
+    for(const e of t.entries){
+      const parts=e.name.toLowerCase().split("/").map(x=>x.trim()), last=parts.map(x=>x.split(/\s+/).pop().replace(/\./g,""));
+      let L=lines.find(l=>parts.every(p=>l.includes(p)))||lines.find(l=>last.every(w=>new RegExp("\\b"+w.replace(/[^a-z\-']/g,"")+"\\b").test(l)));
+      if(!L){miss.push(e.name);continue}
+      const cells=L.split("\t").map(x=>x.trim().toUpperCase());
+      const sc=si>=0?cells[si]:cells.slice(2).find(x=>/^(E|[+-]\d+)$/.test(x)), th=ti>=0?cells[ti]:"";
+      if(sc||th) lv[e.key]={s:sc||"",t:th||""};
+      const p=L.split("\t")[0].trim().toUpperCase(), m=p.match(/^T?(\d+)$/);
+      if(m){res[e.key]=+m[1];hit++} else if(/^(CUT|MC|WD|W\/D|DQ)$/.test(p)){res[e.key]=0;hit++} else miss.push(e.name);
+    }
+    await updateDoc(doc(db,"tournaments",t.id),{results:res,live:lv,resultsAt:Date.now()});
+    S.msg=`Updated ${hit} golfers.`+(miss.length?` Not found in paste: ${miss.length}.`:"");render(true);
+  }
+};
+const curT = () => S.tours.find(t=>t.id===S.cur);
+
+/* ---------- views ---------- */
+function loginView(){ const up=S.mode==="up"; return `<div class="login"><h1 style="font-size:28px;color:var(--g)">Green Jackets Pick’em League</h1>
+<p class="mut">${up?"Create your account":"Sign in to make your picks"}</p>
+${up?`<label>Display name</label><input id="dn" autocomplete="name">`:""}
+<label>Email</label><input id="em" type="email" autocomplete="email"><label>Password</label><input id="pw" type="password" autocomplete="${up?"new-password":"current-password"}">
+${S.err?`<div class="err">${esc(S.err)}</div>`:""}
+<button style="width:100%" onclick="A.login()">${up?"Create account":"Sign in"}</button>
+<button class="ghost" style="width:100%;margin-top:8px" onclick="A.google()">Continue with Google</button>
+<p class="mut" style="text-align:center"><a href="#" onclick="A.mode('${up?"in":"up"}');return false">${up?"I already have an account":"Create an account"}</a></p></div>`; }
+
+function tourSelect(){ return S.tours.length?`<select onchange="A.cur(this.value)">${S.tours.map(t=>`<option value="${t.id}" ${t.id===S.cur?"selected":""}>${esc(t.name)} (${t.date})</option>`).join("")}</select>`:""; }
+
+const lastN=n=>n.split("/")[0].trim().split(/\s+/).pop().toLowerCase();
+const scn=v=>!v||v==="—"?null:v==="E"?0:parseInt(v,10);
+const cmp=(a,b,d)=>a==null&&b==null?0:a==null?1:b==null?-1:(typeof a==="string"?a.localeCompare(b):a-b)*d;
+const hd=(t,k,l,al)=>{const st=t==="p"?S.ps:S.fs;return `<td class="th ${al?"n":""}" onclick="A.hs('${t}','${k}')">${l}${st.k===k?(st.d>0?" ▲":" ▼"):""}</td>`};
+const heads=t=>`<tr class="mut">${hd(t,"pick","Pick")}${hd(t,"golfer","Golfer")}${hd(t,"odds","Odds",1)}${hd(t,"score","Score",1)}${hd(t,"thru","Thru",1)}${hd(t,"pos","Pos",1)}${hd(t,"pts","Pts",1)}</tr>`;
+const posv=(r,on,tee)=>r!=null?(r>0?r:999):on?null:1e4+(tee||0);
+function liveOf(t,key){const lv=t.live?.[key]||{};return {sc:lv.s&&lv.s!=="-"?lv.s:"—", th:lv.t&&!/[AP]M/i.test(lv.t)&&lv.t!=="-"?lv.t:"—"}}
+function picksTable(){
+  const t=curT();
+  const rows=S.users.map(u=>{
+    const name=u.name||"Player", me=u.uid===S.user.uid, p=S.picks.find(x=>x.tid===t.id&&x.uid===u.uid);
+    if(!p) return {me,name,pt:0,grp:3,tee:0,v:{},h:`<tr><td class="nm">${esc(name)}</td><td>${me?`<a class="lnk" href="#" onclick="document.getElementById('golfers').scrollIntoView({behavior:'smooth'});return false">Hasn’t picked yet</a>`:`<span class="mut">Hasn’t picked yet</span>`}</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td class="n">0.0</td></tr>`};
+    const e=t.entries.find(x=>x.key===p.key)||{}, r=pos(t,p.key), pt=pts(t,p)||0, on=S.now>=e.tee, {sc,th}=liveOf(t,p.key);
+    const place=r!=null?(r===0?"CUT":r):on?"—":tourTime(t,e.tee);
+    return {me,name,pt,grp:r!=null?0:on?1:2,tee:e.tee||0,v:{pick:name,golfer:lastN(p.name),odds:e.odds??null,score:scn(sc),thru:th==="—"?null:th==="F"?18:parseInt(th,10),pos:posv(r,on,e.tee),pts:pt},
+      h:`<tr><td class="nm">${esc(name)}</td><td>${esc(p.name)}</td><td class="n">${fmtOdds(e.odds)}</td><td class="n">${sc}</td><td class="n">${th}</td><td class="n">${place}</td><td class="n"><b>${pt.toFixed(1)}</b></td></tr>`};
+  });
+  const k=S.ps.k;
+  rows.sort(k?(a,b)=>((a.grp===3)-(b.grp===3))||cmp(a.v[k]??(k==="pick"?a.name:null),b.v[k]??(k==="pick"?b.name:null),S.ps.d)||a.name.localeCompare(b.name):(a,b)=>a.grp-b.grp||(a.grp===0?b.pt-a.pt:a.tee-b.tee)||a.name.localeCompare(b.name));
+  return `<div class="card" style="overflow-x:auto"><h3>${esc(t.name)}</h3><div class="mut" style="margin-bottom:8px">${(t.type||"regular")[0].toUpperCase()+(t.type||"regular").slice(1)} event · ${MULT[t.type]||1}× multiplier</div><table>${heads("p")}${rows.map(r=>r.me?r.h.replace("<tr>","<tr class=\"me\">"):r.h).join("")}</table></div>`;
+}
+function picksView(){
+  const t=curT(); if(!t) return `<div class="card">No tournament yet. ${isAdmin()?"Add one in the Admin tab.":"The commissioner will add this week’s field soon."}</div>`;
+  return tourSelect()+picksTable()+golfers();
+}
+function golfers(){
+  const t=curT(), q=S.q.toLowerCase();
+  const tp=S.picks.filter(p=>p.tid===t.id), taken=Object.fromEntries(tp.map(p=>[p.key,p])), mine=tp.find(p=>p.uid===S.user.uid);
+  const rows=t.entries.filter(e=>e.name.toLowerCase().includes(q)).map(e=>{
+    const tk=taken[e.key], on=S.now>=e.tee, me=tk&&tk.uid===S.user.uid, r=pos(t,e.key), pt=pts(t,{key:e.key})||0, {sc,th}=liveOf(t,e.key);
+    const place=r!=null?(r===0?"CUT":r):on?"—":tourTime(t,e.tee);
+    const a=me?`<span class="pill">${on?"Locked in":"Your pick"}</span>`:tk?`<span class="mut">${esc(tk.who)}</span>`:on?`<span class="mut">—</span>`
+      :`<button class="sm ${S.draft===e.key?"pink":"ghost sel"}" onclick="A.select('${e.key}')">${S.draft===e.key?"Selected":"Select"}</button>`;
+    return {n:e.name,v:{pick:me?0:tk?2:on?3:1,golfer:lastN(e.name),odds:e.odds??null,score:scn(sc),thru:th==="—"?null:th==="F"?18:parseInt(th,10),pos:posv(r,on,e.tee),pts:pt},
+      h:`<tr class="${me?"me":S.draft===e.key?"sel":tk||on?"off":""}"><td style="min-width:78px">${a}</td><td class="nm">${esc(e.name)}</td><td class="n">${fmtOdds(e.odds)}</td><td class="n">${sc}</td><td class="n">${th}</td><td class="n">${place}</td><td class="n"><b>${pt.toFixed(1)}</b></td></tr>`};
+  });
+  rows.sort((a,b)=>cmp(a.v[S.fs.k],b.v[S.fs.k],S.fs.d)||lastN(a.n).localeCompare(lastN(b.n)));
+  const dr=t.entries.find(e=>e.key===S.draft&&!taken[e.key]&&S.now<e.tee), can=dr&&!(mine&&mine.key===dr.key);
+  return `${S.msg?`<div class="ok">${esc(S.msg)}</div>`:""}${S.err?`<div class="err">${esc(S.err)}</div>`:""}
+<div class="sticky" style="display:flex;gap:8px"><input id="q" style="flex:1;min-width:0" placeholder="Search" value="${esc(S.q)}" oninput="A.q(this.value)"><button class="pink" style="margin:4px 0 10px;white-space:nowrap" onclick="A.submit()" ${can?"":"disabled"}>Submit pick</button></div>
+<div class="card" id="golfers" style="overflow-x:auto"><table>${heads("f")}${rows.map(r=>r.h).join("")||"<tr><td colspan=7 class='mut'>No matches.</td></tr>"}</table></div>`;
+}
+function standView(){
+  const us=S.users.map(u=>({uid:u.uid,name:u.name||"Player",tot:0}));
+  const weeks=S.tours.filter(t=>S.picks.some(p=>p.tid===t.id)).map(t=>({t,rows:us.map(u=>{
+    const p=S.picks.find(x=>x.tid===t.id&&x.uid===u.uid), x=p?(pts(t,p)||0):null; if(x) u.tot+=x;
+    return {u,p,x,r:p?pos(t,p.key):null}})}));
+  us.sort((a,b)=>b.tot-a.tot||a.name.localeCompare(b.name));
+  const cap=ty=>(ty||"regular")[0].toUpperCase()+(ty||"regular").slice(1);
+  return `<div class="card" style="padding:10px 14px"><h2 style="margin-bottom:4px;font-size:18px">Season standings</h2>${us.length?us.map((u,i)=>`<div class="row c ${u.uid===S.user.uid?"me":""}"><div class="rank">${i+1}</div><div class="grow nm">${esc(u.name)}</div><div class="pts">${u.tot.toFixed(1)}</div></div>`).join(""):"<div class='mut'>Standings appear once everyone has signed up.</div>"}</div>`+
+  weeks.reverse().map(({t,rows})=>`<div class="card" style="overflow-x:auto"><h3>${esc(t.name)}</h3><div class="mut" style="margin-bottom:8px">${cap(t.type)} event · ${MULT[t.type]||1}× multiplier</div><table>${rows.sort((a,b)=>(b.x??-1)-(a.x??-1)||a.u.name.localeCompare(b.u.name)).map(({u,p,x,r})=>`<tr${u.uid===S.user.uid?' class="me"':""}><td class="nm">${esc(u.name)}</td>${p?`<td>${esc(p.name)}</td><td class="n">${fmtOdds(t.entries.find(e=>e.key===p.key)?.odds)}</td><td class="n mut">${r==null?"":r===0?"CUT/WD":"P"+r}</td><td class="n"><b>${fmtPts(x)}</b></td>`:`<td class="mut">Didn’t pick</td><td class="n mut">—</td><td class="n mut">—</td><td class="n"><b>0.0</b></td>`}</tr>`).join("")}</table></div>`).join("");
+}
+function adminView(){
+  const a=S.adm, t=curT();
+  const prev=S.parsed?`<div class="card"><b>${S.parsed.length} golfers found</b>${S.parsed.map((x,i)=>`<div class="row" ${x.odds==null?'style="background:#fbeaf1"':""}><div class="grow">${esc(x.name)}<div class="mut">${tourTime({tz:a.tz},x.tee)}</div></div><input style="width:84px;margin:0" inputmode="numeric" placeholder="odds" value="${x.odds??""}" onchange="A.odds(${i},this.value)"></div>`).join("")}<button style="margin-top:10px;width:100%" onclick="A.save()">Save tournament</button></div>`:"";
+  return `<div class="card"><h2 style="margin-bottom:8px">New tournament</h2>
+<label>Name</label><input value="${esc(a.name)}" oninput="A.adm('name',this.value)">
+<label>Type</label><select onchange="A.adm('type',this.value)">${Object.keys(MULT).map(k=>`<option ${a.type===k?"selected":""} value="${k}">${k} (${MULT[k]}×)</option>`).join("")}</select>
+<label>Round 1 date (Thursday)</label><input type="date" value="${a.date}" oninput="A.adm('date',this.value)">
+<label>Course time zone</label><select onchange="A.adm('tz',this.value)">${Object.entries(TZ).map(([n,z])=>`<option value="${z}" ${a.tz===z?"selected":""}>${n}</option>`).join("")}</select>
+<label>Paste the PGA Tour table (Wednesday night)</label><textarea oninput="A.adm('paste',this.value)">${esc(a.paste)}</textarea>
+<button onclick="A.parse()">Preview</button>${S.err?`<div class="err">${esc(S.err)}</div>`:""}</div>${prev}
+<div class="card"><h2 style="margin-bottom:8px">Update leaderboard</h2>${tourSelect()}
+<label>Paste the ESPN leaderboard</label><textarea oninput="A.adm('rpaste',this.value)">${esc(a.rpaste)}</textarea>
+<button onclick="A.results()" ${t?"":"disabled"}>Update results</button>${S.msg?`<div class="ok">${esc(S.msg)}</div>`:""}</div>
+${t?`<div class="card"><h3>Clear a pick (${esc(t.name)})</h3>${S.picks.filter(p=>p.tid===t.id).map(p=>`<div class="row"><div class="grow">${esc(p.who)}: ${esc(p.name)}</div><button class="sm ghost" onclick="A.clear('${p.tid}','${p.key}')">Clear</button></div>`).join("")||"<div class='mut'>No picks.</div>"}</div>`:""}`;
+}
+
+function render(force,focus){
+  const ae=document.activeElement;
+  if(!force && ae && ["INPUT","TEXTAREA","SELECT"].includes(ae.tagName)) return;
+  if(!S.user){ $("#app").innerHTML=loginView(); return; }
+  const tabs=[["picks","Picks"],["stand","Standings"],...(isAdmin()?[["admin","Admin"]]:[])];
+  $("#app").innerHTML=`<header><h1>Green Jackets Pick’em League</h1><div class="sub"><span>${esc(S.user.displayName||S.user.email)}</span><a onclick="A.out()">Sign out</a></div>
+<nav>${tabs.map(([k,l])=>`<button class="${S.tab===k?"on":""}" onclick="A.tab('${k}')">${l}</button>`).join("")}</nav></header>
+<main>${S.tab==="picks"?picksView():S.tab==="stand"?standView():adminView()}</main>`;
+  if(focus==="q"){const el=$("#q");el.focus();el.setSelectionRange(el.value.length,el.value.length)}
+}
+render(true);
+</script></body></html>
