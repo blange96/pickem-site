@@ -60,7 +60,7 @@ const ADMIN_EMAIL = "brock.lange8@gmail.com";
 const app = initializeApp(firebaseConfig), auth = getAuth(app), db = getFirestore(app);
 const MULT = {regular:1, signature:1.25, major:2};
 const TZ = {"Eastern":"America/New_York","Central":"America/Chicago","Mountain":"America/Denver","Pacific":"America/Los_Angeles","Hawaii":"Pacific/Honolulu"};
-const S = {sched:[], modal:null, ps:{k:null,d:1}, fs:{k:"odds",d:1}, draft:null, users:[], sort:"odds-asc", user:null, tours:[], picks:[], tab:"picks", cur:null, q:"", now:Date.now(), msg:"", err:"", parsed:null, adm:{name:"",type:"regular",date:"",tz:"America/New_York",paste:"",rpaste:""}, mode:"in"};
+const S = {sp:{text:"",rows:null,bad:[],msg:"",err:""}, sched:[], modal:null, ps:{k:null,d:1}, fs:{k:"odds",d:1}, draft:null, users:[], sort:"odds-asc", user:null, tours:[], picks:[], tab:"picks", cur:null, q:"", now:Date.now(), msg:"", err:"", parsed:null, adm:{name:"",type:"regular",date:"",tz:"America/New_York",paste:"",rpaste:""}, mode:"in"};
 const $ = s => document.querySelector(s);
 const esc = s => String(s??"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const keyOf = n => n.toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,"");
@@ -151,6 +151,17 @@ const A = window.A = {
   },
   async clear(tid,key){ if(!confirm("Clear this pick?"))return; const b=writeBatch(db); b.delete(doc(db,"picks",`${tid}__${key}`)); await b.commit(); },
   adm(f,v){S.adm[f]=v},
+  fromSched(i){const e=S.sched[+i]; if(!e) return; S.adm.name=e.name; S.adm.date=e.start.slice(0,10); if(e.type) S.adm.type=e.type; S.parsed=null; S.err=""; render(true)},
+  spt(v){S.sp.text=v},
+  sparse(){const r=parseSched(S.sp.text); S.sp.rows=r.out.length?r.out:null; S.sp.bad=r.bad; S.sp.msg=""; S.sp.err=r.out.length?"":"No events found. Paste the rows with Date Start, Date End, Tournament, Venue, Type."; render(true)},
+  async ssave(){
+    const ev=S.sp.rows; if(!ev) return;
+    const year=ev[0].start.slice(0,4);
+    try{ await setDoc(doc(db,"schedule",year),{season:+year,source:"manual",events:ev,updatedAt:Date.now()});
+      S.sp.msg=`Saved ${ev.length} events for ${year}.`; S.sp.rows=null; S.sp.text=""; S.sp.bad=[];
+    }catch(e){ S.sp.err="Couldn’t save the schedule. Check that the Firestore rules were updated. ("+e.message+")"; }
+    render(true);
+  },
   parse(){
     const a=S.adm; if(!a.name||!a.date||!a.paste){S.err="Add a name, the Round 1 date, and the pasted table.";return render(true)}
     S.parsed=parseField(a.paste,a.date,a.tz); S.err=S.parsed.length?"":"No golfers found. Paste the table with the tee time column."; render(true);
@@ -239,6 +250,25 @@ function golfers(){
 <div class="sticky" style="display:flex;gap:8px"><input id="q" style="flex:1;min-width:0" placeholder="Search" value="${esc(S.q)}" oninput="A.q(this.value)"><button class="pink" style="margin:4px 0 10px;white-space:nowrap" onclick="A.submit()" ${can?"":"disabled"}>Submit pick</button></div>
 <div class="card" id="golfers" style="overflow-x:auto"><table>${heads("f")}${rows.map(r=>r.h).join("")||"<tr><td colspan=7 class='mut'>No matches.</td></tr>"}</table></div>`;
 }
+function toISO(x){
+  x=String(x||"").trim(); let m;
+  if(m=x.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)) return `${m[1]}-${m[2].padStart(2,"0")}-${m[3].padStart(2,"0")}`;
+  if(m=x.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/)){let y=+m[3]; if(y<100) y+=2000; return `${y}-${m[1].padStart(2,"0")}-${m[2].padStart(2,"0")}`}
+  const d=new Date(`${x} 12:00:00 UTC`); return isNaN(d)?null:d.toISOString().slice(0,10);
+}
+// Rows copied from Excel: Date Start, Date End, Tournament, Venue, Type
+function parseSched(text){
+  const out=[], bad=[];
+  for(const line of text.split(/\r?\n/)){
+    const c=line.split("\t").map(v=>v.trim());
+    if(c.length<3||!c.some(Boolean)) continue;
+    const st=toISO(c[0]);
+    if(!st){ if(!/date|start/i.test(c[0])) bad.push(line); continue; }
+    const label=c[4]||"Regular", type=/major/i.test(label)?"major":/signature/i.test(label)?"signature":"regular";
+    out.push({name:c[2],start:st,end:toISO(c[1])||addDays(st,3),venue:c[3]||"",label,type});
+  }
+  return {out,bad};
+}
 const cap=ty=>(ty||"regular")[0].toUpperCase()+(ty||"regular").slice(1);
 const fd=d=>new Date(d+"T12:00:00Z").toLocaleDateString("en-US",{month:"short",day:"numeric",timeZone:"UTC"});
 const addDays=(d,n)=>new Date(Date.parse(d)+n*864e5).toISOString().slice(0,10);
@@ -293,14 +323,15 @@ function scheduleView(){
     const c=S.tours.filter(t=>!used.has(t.id)&&Math.abs(Date.parse(t.date)-Date.parse(start))<=864e5).sort((a,b)=>overlap(b.name,ev.name)-overlap(a.name,ev.name));
     const t=c.length&&(overlap(c[0].name,ev.name)>0||sib===1)?c[0]:null;
     if(t) used.add(t.id);
-    return {start,end,name:t?t.name:ev.name,t};
+    return {start,end,name:t?t.name:ev.name,t,venue:ev.venue,label:ev.label};
   });
-  S.tours.filter(t=>!used.has(t.id)).forEach(t=>rows.push({start:t.date,end:addDays(t.date,3),name:t.name,t}));
+  S.tours.filter(t=>!used.has(t.id)&&(!S.sched.length||t.date.startsWith(S.schedYear))).forEach(t=>rows.push({start:t.date,end:addDays(t.date,3),name:t.name,t}));
   rows.sort((a,b)=>a.start.localeCompare(b.start)||a.name.localeCompare(b.name));
   if(!rows.length) return `<div class="card">No tournaments yet.</div>`;
-  return `<div class="card" style="overflow-x:auto"><h2 style="margin-bottom:6px;font-size:18px">${esc(S.schedYear||"")} Schedule</h2><table><tr class="mut"><td>Start</td><td>End</td><td>Tournament</td><td>Winner</td><td>Golfer</td><td class="n">Pts</td></tr>${rows.map(({start,end,name,t})=>{
+  return `<div class="card" style="overflow-x:auto"><h2 style="margin-bottom:6px;font-size:18px">${esc(S.schedYear||"")} Schedule</h2><table><tr class="mut"><td>Start</td><td>End</td><td>Tournament</td><td>Winner</td><td>Golfer</td><td class="n">Pts</td></tr>${rows.map(({start,end,name,t,venue,label})=>{
     const over=t&&isOver(t), w=over?winnerOf(t):null, live=t&&!over&&S.now>=Date.parse(t.date);
-    return `<tr><td class="nw">${fd(start)}</td><td class="nw">${fd(end)}</td><td>${t?`<a class="lnk" href="#" onclick="A.open('${t.id}');return false">${esc(name)}</a>`:esc(name)}</td><td class="nw">${w?esc(w.n):live?`<span class="mut">In progress</span>`:"—"}</td><td>${w?esc(w.g):"—"}</td><td class="n nw">${w?`<b>${w.pt.toFixed(1)}</b>`:"—"}</td></tr>`;
+    const meta=venue||label?`<div class="mut" style="font-size:12px">${[venue,label].filter(Boolean).map(esc).join(" · ")}</div>`:"";
+    return `<tr><td class="nw">${fd(start)}</td><td class="nw">${fd(end)}</td><td>${t?`<a class="lnk" href="#" onclick="A.open('${t.id}');return false">${esc(name)}</a>`:esc(name)}${meta}</td><td class="nw">${w?esc(w.n):live?`<span class="mut">In progress</span>`:"—"}</td><td>${w?esc(w.g):"—"}</td><td class="n nw">${w?`<b>${w.pt.toFixed(1)}</b>`:"—"}</td></tr>`;
   }).join("")}</table></div>`;
 }
 function modalHtml(){
@@ -310,8 +341,12 @@ function modalHtml(){
 document.addEventListener("keydown",e=>{ if(e.key==="Escape"&&S.modal){S.modal=null;render(true)} });
 function adminView(){
   const a=S.adm, t=curT();
+  const up=S.sched.map((e,i)=>({e,i})).filter(({e})=>Date.parse(e.start.slice(0,10))>=S.now-4*864e5);
+  const fromS=up.length?`<label>Start from the schedule</label><select onchange="A.fromSched(this.value)"><option value="">Choose a tournament…</option>${up.map(({e,i})=>`<option value="${i}">${fd(e.start.slice(0,10))} · ${esc(e.name)}</option>`).join("")}</select>`:"";
+  const sp=S.sp, sprev=sp.rows?`<div class="card"><b>${sp.rows.length} events for ${sp.rows[0].start.slice(0,4)}</b>${sp.rows.map(r=>`<div class="row"><div class="grow">${esc(r.name)}<div class="mut">${fd(r.start)} – ${fd(r.end)} · ${esc(r.venue)}</div></div><span class="pill">${esc(r.label)}</span></div>`).join("")}${sp.bad.length?`<div class="err">${sp.bad.length} row(s) skipped (couldn’t read the date).</div>`:""}<div class="mut" style="margin-top:8px">Playoffs and new events count as regular (1×).</div><button style="margin-top:10px;width:100%" onclick="A.ssave()">Save schedule</button></div>`:"";
   const prev=S.parsed?`<div class="card"><b>${S.parsed.length} golfers found</b>${S.parsed.map((x,i)=>`<div class="row" ${x.odds==null?'style="background:#fbeaf1"':""}><div class="grow">${esc(x.name)}<div class="mut">${tourTime({tz:a.tz},x.tee)}</div></div><input style="width:84px;margin:0" inputmode="numeric" placeholder="odds" value="${x.odds??""}" onchange="A.odds(${i},this.value)"></div>`).join("")}<button style="margin-top:10px;width:100%" onclick="A.save()">Save tournament</button></div>`:"";
   return `<div class="card"><h2 style="margin-bottom:8px">New tournament</h2>
+${fromS}
 <label>Name</label><input value="${esc(a.name)}" oninput="A.adm('name',this.value)">
 <label>Type</label><select onchange="A.adm('type',this.value)">${Object.keys(MULT).map(k=>`<option ${a.type===k?"selected":""} value="${k}">${k} (${MULT[k]}×)</option>`).join("")}</select>
 <label>Round 1 date (Thursday)</label><input type="date" value="${a.date}" oninput="A.adm('date',this.value)">
@@ -321,6 +356,7 @@ function adminView(){
 <div class="card"><h2 style="margin-bottom:8px">Update leaderboard</h2>${tourSelect()}
 <label>Paste the ESPN leaderboard</label><textarea oninput="A.adm('rpaste',this.value)">${esc(a.rpaste)}</textarea>
 <button onclick="A.results()" ${t?"":"disabled"}>Update results</button>${S.msg?`<div class="ok">${esc(S.msg)}</div>`:""}</div>
+<div class="card"><h2 style="margin-bottom:8px">Import season schedule</h2><div class="mut" style="margin-bottom:6px">Copy the rows from Excel (Date Start, Date End, Tournament, Venue, Type) and paste them here. A header row is fine.</div><textarea oninput="A.spt(this.value)">${esc(sp.text)}</textarea><button onclick="A.sparse()">Preview</button>${sp.err?`<div class="err">${esc(sp.err)}</div>`:""}${sp.msg?`<div class="ok">${esc(sp.msg)}</div>`:""}</div>${sprev}
 ${t?`<div class="card"><h3>Clear a pick (${esc(t.name)})</h3>${S.picks.filter(p=>p.tid===t.id).map(p=>`<div class="row"><div class="grow">${esc(p.who)}: ${esc(p.name)}</div><button class="sm ghost" onclick="A.clear('${p.tid}','${p.key}')">Clear</button></div>`).join("")||"<div class='mut'>No picks.</div>"}</div>`:""}`;
 }
 
