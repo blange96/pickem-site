@@ -56,20 +56,34 @@ function preview(events) {
 /* ---------- main ---------- */
 const res = await fetch(SCOREBOARD, { headers: { "User-Agent": "Mozilla/5.0" } });
 if (!res.ok) throw new Error(`ESPN scoreboard returned HTTP ${res.status}`);
-const events = (await res.json()).events || [];
-if (!events.length) { console.log("ESPN lists no events right now."); process.exit(0); }
-if (PREVIEW) { preview(events); process.exit(0); }
+const sb = await res.json();
+const events = sb.events || [];
+const season = sb.leagues?.[0]?.season?.year ?? sb.season?.year;
+const calendar = (sb.leagues?.[0]?.calendar || []).map(c => ({ id: c.id, name: c.label, start: c.startDate, end: c.endDate }));
+if (PREVIEW) { console.log(`Season ${season} calendar: ${calendar.length} events`); preview(events); process.exit(0); }
 if (!FIREBASE_SERVICE_ACCOUNT) throw new Error("Missing FIREBASE_SERVICE_ACCOUNT");
 admin.initializeApp({ credential: admin.credential.cert(JSON.parse(FIREBASE_SERVICE_ACCOUNT)) });
 const db = admin.firestore();
+// Save the season calendar so the app's Schedule tab can list every event (only writes when it changes).
+if (season && calendar.length) {
+ const ref = db.doc(`schedule/${season}`), cur = await ref.get();
+ if (!cur.exists || (cur.data().source !== "manual" && JSON.stringify(cur.data().events) !== JSON.stringify(calendar))) { // a schedule imported by hand is never overwritten
+   if (DRY) console.log(`[dry run] would save ${calendar.length} events for ${season}`);
+   else { await ref.set({ season, events: calendar, updatedAt: Date.now() }); console.log(`Saved ${calendar.length} schedule events for ${season}`); }
+ }
+}
+if (!events.length) { console.log("ESPN lists no events right now."); process.exit(0); }
 const now = Date.now();
 const snap = await db.collection("tournaments").get();
-// Only tournaments you've set up in Admin, from Thursday 00:00 UTC through Monday midday UTC.
+// Only tournaments you've set up, from the moment the first group tees off (their earliest tee time)
+// through Monday midday UTC. This is what makes the 5-minute schedule "dynamic": the workflow wakes up
+// early on Thursday, and this check ends the run right away until the first tee time has passed.
 const active = snap.docs.filter(d => {
  const start = Date.parse(`${d.data().date}T00:00:00Z`);
- return now >= start && now <= start + 4.5 * DAY;
+ const first = Math.min(...Object.values(d.data().tee || {}).filter(Number.isFinite)); // Infinity if no tee times saved
+ return now >= start && now <= start + 4.5 * DAY && (!Number.isFinite(first) || now >= first);
 });
-if (!active.length) { console.log("No tournament in the live window. Nothing to do."); process.exit(0); }
+if (!active.length) { console.log("No tournament live yet (before the first tee time) or none this week. Nothing to do."); process.exit(0); }
 for (const d of active) {
  const t = d.data(), label = `${t.name} (${t.date})`;
  try {
