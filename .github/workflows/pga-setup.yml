@@ -1,7 +1,7 @@
 name: Weekly field and odds
 on:
  schedule:
-   - cron: "23 3,15 * * 2,3,4"   # Tue-Thu, twice a day (UTC). Stops by itself once the first group tees off.
+   - cron: "00 12,23 * * 2,3"   # Tue-Thu, twice a day (UTC). Stops by itself once the first group tees off.
  workflow_dispatch:
    inputs:
      tournament_id:
