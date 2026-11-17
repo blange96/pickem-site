@@ -3,7 +3,10 @@
 // Env: FIREBASE_SERVICE_ACCOUNT, PGA_API_KEY (public site key), TOURNAMENT_ID (optional, e.g. R2026558),
 //      DRY=1 (show what would be saved, write nothing), SELFTEST=1 (fake data, no network)
 // Safety: never writes once the first group has teed off (odds go live after that and would change).
+// Email: only writes (and emails everyone via notify.js) when the field/odds actually changed.
+//        First email of the week says the odds are posted; later ones list what was updated.
 import { gunzipSync } from "node:zlib";
+import { diffEntries, compose, notifyOdds } from "./notify.js";
 const { FIREBASE_SERVICE_ACCOUNT, PGA_API_KEY, TOURNAMENT_ID, DRY, SELFTEST } =
   process.env;
 const GQL = "https://orchestrator.pgatour.com/graphql";
@@ -192,6 +195,21 @@ if (SELFTEST) {
       { name: "Fake Classic", type: "signature", start: "2027-04-08" },
     ]),
   );
+  const built = build(field, tee, odds),
+    doc = { name: "Test Open", tz: "America/Chicago", entries: built.entries };
+  const same = diffEntries(built.entries, [...built.entries].reverse());
+  console.log("unchanged run -> any change?", same.any);
+  const changed = diffEntries(built.entries, [
+    { ...built.entries[0], odds: 4000 },
+    { name: "New Guy", key: "new_guy", odds: 8000, tee: built.entries[0].tee },
+  ]);
+  for (const [first, diff] of [
+    [true, diffEntries(null, built.entries)],
+    [false, changed],
+  ]) {
+    const m = compose({ first, doc, diff, firstTee: built.firstTee, name: "Pat" });
+    console.log(`\n--- ${m.subject}\n${m.text}`);
+  }
   process.exit(0);
 }
 /* ---------- main ---------- */
@@ -286,8 +304,18 @@ b.entries
       `  ${e.name}: +${e.odds}, tees ${new Date(e.tee).toLocaleTimeString("en-US", { timeZone: tz, hour: "numeric", minute: "2-digit" })}`,
     ),
   );
+const diff = diffEntries(cur.data()?.entries, doc.entries);
+if (cur.exists && !diff.any && cur.data().tz === doc.tz) {
+  console.log("No changes since the last run. Nothing written, no email.");
+  process.exit(0);
+}
+if (cur.exists)
+  console.log(
+    `  changes: ${diff.moved.length} odds moved, ${diff.added.length} added, ${diff.removed.length} removed, ${diff.teeMoved.length} tee times changed`,
+  );
 if (DRY) console.log("[dry run] nothing written.");
 else {
   await ref.set(doc);
   console.log("Saved.");
 }
+await notifyOdds({ admin, id, doc, diff, firstTee: b.firstTee, dry: !!DRY });

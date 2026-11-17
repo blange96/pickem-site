@@ -56,7 +56,7 @@ The site is one static page, and two GitHub Actions do the boring work so the co
 
 | Workflow | When it runs | What it does |
 | -------- | ------------ | ------------ |
-| **Weekly field and odds** ([`pga-setup.js`](pga-setup.js)) | Tue & Wed, twice a day | Gets this week's field, Round 1 tee times, and odds from pgatour.com and saves them to Firestore. It won't write anything once the first group has teed off, so the odds stay put. |
+| **Weekly field and odds** ([`pga-setup.js`](pga-setup.js)) | Tue & Wed, twice a day | Gets this week's field, Round 1 tee times, and odds from pgatour.com and saves them to Firestore. It won't write anything once the first group has teed off, so the odds stay put. When something actually changes, [`notify.js`](notify.js) emails everyone: an "odds are up" email the first time each week, then an "odds updated" email listing what moved. If nothing changes, nothing is saved and no email is sent. |
 | **Sync ESPN leaderboard** ([`sync.js`](sync.js)) | Every 5 min, Thu–Sun | Copies the live ESPN leaderboard (scores, holes played, positions, cuts) into Firestore so everyone's points update live. |
 
 Both workflows can also be started by hand from the **Actions** tab, and they include dry-run and preview options so you can see what would change before anything is saved.
@@ -93,6 +93,7 @@ Want to start one with your own crew? Here's how to set it up:
 4. **Add the repo secrets** under *Settings → Secrets and variables → Actions*:
    - `FIREBASE_SERVICE_ACCOUNT`: the JSON key for a Firebase service account
    - `PGA_API_KEY`: the public pgatour.com site key (used by the weekly setup)
+   - *(optional, for odds emails)* `SMTP_HOST`, `SMTP_PORT` (default 465), `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`. For Gmail, use `smtp.gmail.com` and an [app password](https://myaccount.google.com/apppasswords). Without these, the emails are skipped. You can also add an Actions **variable** `SITE_URL` to put a link to the site in the email.
 5. **Try a dry run.** Start both workflows by hand with the preview/dry options to make sure everything connects, then let the schedules take over.
 
 To test a script locally:
