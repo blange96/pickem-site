@@ -4,7 +4,7 @@
 // Optional env for manual runs:
 //   PREVIEW=1  print what ESPN returns (no Firebase needed, nothing written)
 //   DRY=1      read Firestore and show what would be written, but write nothing
-import admin from "firebase-admin";
+import admin from "firebase-admin";   // Firebase Admin SDK: logs in with the service account and reads/writes Firestore
 const { FIREBASE_SERVICE_ACCOUNT, DRY, PREVIEW } = process.env;
 const SCOREBOARD = "https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard";
 const DAY = 864e5;
