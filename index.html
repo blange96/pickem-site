@@ -454,9 +454,9 @@
         const e = t.entries.find((x) => x.key === p.key),
           r = pos(t, p.key);
         if (!e || r == null) return null;
-        return r > 0 && e.odds ? (e.odds / r) * (MULT[t.type] || 1) : 0;
+        return r > 0 && e.odds ? (e.odds / r / 100) * (MULT[t.type] || 1) : 0;
       }
-      const fmtPts = (x) => (x == null ? "—" : x.toFixed(1));
+      const fmtPts = (x) => (x == null ? "—" : x.toFixed(2));
 
       /* ---------- data ---------- */
       let unsub = [];
@@ -889,7 +889,7 @@ ${S.err ? `<div class="err">${esc(S.err)}</div>` : ""}
               pos: posv(r, on, e.tee),
               pts: pt,
             },
-            h: `<tr><td class="nm">${esc(name)}</td><td>${esc(p.name)}</td><td class="n">${fmtOdds(e.odds)}</td><td class="n">${sc}</td><td class="n">${th}</td><td class="n">${place}</td><td class="n"><b>${pt.toFixed(1)}</b></td></tr>`,
+            h: `<tr><td class="nm">${esc(name)}</td><td>${esc(p.name)}</td><td class="n">${fmtOdds(e.odds)}</td><td class="n">${sc}</td><td class="n">${th}</td><td class="n">${place}</td><td class="n"><b>${pt.toFixed(2)}</b></td></tr>`,
           };
         });
         const k = S.ps.k;
@@ -951,7 +951,7 @@ ${S.err ? `<div class="err">${esc(S.err)}</div>` : ""}
                 pos: posv(r, on, e.tee),
                 pts: pt,
               },
-              h: `<tr class="${me ? "me" : S.draft === e.key ? "sel" : tk || on ? "off" : ""}"><td style="min-width:78px">${a}</td><td class="nm">${esc(e.name)}</td><td class="n">${fmtOdds(e.odds)}</td><td class="n">${sc}</td><td class="n">${th}</td><td class="n">${place}</td><td class="n"><b>${pt.toFixed(1)}</b></td></tr>`,
+              h: `<tr class="${me ? "me" : S.draft === e.key ? "sel" : tk || on ? "off" : ""}"><td style="min-width:78px">${a}</td><td class="nm">${esc(e.name)}</td><td class="n">${fmtOdds(e.odds)}</td><td class="n">${sc}</td><td class="n">${th}</td><td class="n">${place}</td><td class="n"><b>${pt.toFixed(2)}</b></td></tr>`,
             };
           });
         rows.sort(
@@ -1119,7 +1119,7 @@ ${S.err ? `<div class="err">${esc(S.err)}</div>` : ""}
           B = 18,
           pw = W - L - R,
           ph = H - T - B;
-        const max = Math.max(1, ...series.flatMap((s) => s.vals));
+        const max = Math.max(0.01, ...series.flatMap((s) => s.vals));
         const nice = (r) => {
           const p = Math.pow(10, Math.floor(Math.log10(r))),
             f = r / p;
@@ -1132,7 +1132,7 @@ ${S.err ? `<div class="err">${esc(S.err)}</div>` : ""}
         const fv = (v) =>
           v >= 1000
             ? (v / 1000).toFixed(1).replace(/\.0$/, "") + "k"
-            : String(Math.round(v));
+            : String(+v.toFixed(2));
         let g = "";
         for (let v = 0; v <= top + 1e-9; v += step)
           g += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" style="stroke:var(--line)"/><text x="${L - 5}" y="${y(v) + 3}" text-anchor="end" style="fill:var(--mut);font-size:9px">${fv(v)}</text>`;
@@ -1145,7 +1145,7 @@ ${S.err ? `<div class="err">${esc(S.err)}</div>` : ""}
                 ? s.vals
                     .map(
                       (v, i) =>
-                        `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="${s.me ? 3.4 : 2.6}" style="fill:${s.color}"><title>${E(s.name)} · ${E(labels[i])}: ${v.toFixed(1)}</title></circle>`,
+                        `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="${s.me ? 3.4 : 2.6}" style="fill:${s.color}"><title>${E(s.name)} · ${E(labels[i])}: ${v.toFixed(2)}</title></circle>`,
                     )
                     .join("")
                 : ""),
@@ -1165,7 +1165,7 @@ ${S.err ? `<div class="err">${esc(S.err)}</div>` : ""}
           if (t && u) u.tot += pts(t, p) || 0;
         });
         us.sort((a, b) => b.tot - a.tot || a.name.localeCompare(b.name));
-        return `<div class="card" style="padding:10px 14px"><h2 style="margin-bottom:4px;font-size:18px">Season standings</h2>${us.length ? us.map((u, i) => `<div class="row c ${u.uid === S.user.uid ? "me" : ""}"><div class="rank">${i + 1}</div><div class="grow nm">${esc(u.name)}</div><div class="pts">${u.tot.toFixed(1)}</div></div>`).join("") : "<div class='mut'>Standings appear once everyone has signed up.</div>"}</div>`;
+        return `<div class="card" style="padding:10px 14px"><h2 style="margin-bottom:4px;font-size:18px">Season standings</h2>${us.length ? us.map((u, i) => `<div class="row c ${u.uid === S.user.uid ? "me" : ""}"><div class="rank">${i + 1}</div><div class="grow nm">${esc(u.name)}</div><div class="pts">${u.tot.toFixed(2)}</div></div>`).join("") : "<div class='mut'>Standings appear once everyone has signed up.</div>"}</div>`;
       }
       function cardHtml(t) {
         const rows = tourRows(t).sort(
@@ -1232,7 +1232,7 @@ ${S.err ? `<div class="err">${esc(S.err)}</div>` : ""}
               venue || label
                 ? `<div class="mut" style="font-size:12px">${[venue, label].filter(Boolean).map(esc).join(" · ")}</div>`
                 : "";
-            return `<tr><td class="nw">${fd(start)}</td><td class="nw">${fd(end)}</td><td>${t ? `<a class="lnk" href="#" onclick="A.open('${t.id}');return false">${esc(name)}</a>` : esc(name)}${meta}</td><td class="nw">${w ? esc(w.n) : live ? `<span class="mut">In progress</span>` : "—"}</td><td>${w ? esc(w.g) : "—"}</td><td class="n nw">${w ? `<b>${w.pt.toFixed(1)}</b>` : "—"}</td></tr>`;
+            return `<tr><td class="nw">${fd(start)}</td><td class="nw">${fd(end)}</td><td>${t ? `<a class="lnk" href="#" onclick="A.open('${t.id}');return false">${esc(name)}</a>` : esc(name)}${meta}</td><td class="nw">${w ? esc(w.n) : live ? `<span class="mut">In progress</span>` : "—"}</td><td>${w ? esc(w.g) : "—"}</td><td class="n nw">${w ? `<b>${w.pt.toFixed(2)}</b>` : "—"}</td></tr>`;
           })
           .join("")}</table></div>`;
       }
