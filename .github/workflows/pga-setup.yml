@@ -1,7 +1,8 @@
 name: Weekly field and odds
 on:
   schedule:
-    - cron: "7 12,23 * * 2,3" # Tue and Wed, twice a day (UTC). Stops by itself once the first group tees off.
+    - cron: "7 7,18 * * 2,3" # Tue and Wed, twice a day (Central). Stops by itself once the first group tees off.
+      timezone: "America/Chicago"
   workflow_dispatch:
     inputs:
       tournament_id:
