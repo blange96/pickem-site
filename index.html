@@ -914,7 +914,25 @@ ${S.err ? `<div class="err">${esc(S.err)}</div>` : ""}
         const t = curT();
         if (!t)
           return `<div class="card">No tournament yet. ${isAdmin() ? "Add one in the Admin tab." : "The commissioner will add this week’s field soon."}</div>`;
-        return tourSelect() + picksTable() + golfers();
+        return tourSelect() + updatedAt(t) + picksTable() + golfers();
+      }
+      function updatedAt(t) {
+        if (!t.resultsAt) return "";
+        const d = new Date(t.resultsAt),
+          mins = Math.floor((S.now - t.resultsAt) / 60000),
+          ago =
+            mins < 1
+              ? "just now"
+              : mins < 60
+                ? `${mins} min ago`
+                : mins < 1440
+                  ? `${Math.floor(mins / 60)} hr ago`
+                  : "",
+          when =
+            (mins >= 1440
+              ? d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" }) + ", "
+              : "") + d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+        return `<div class="mut" style="font-size:13px;margin:6px 0 10px">Leaderboard updated ${when}${ago ? ` (${ago})` : ""}</div>`;
       }
       function golfers() {
         const t = curT(),
