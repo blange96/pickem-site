@@ -1,0 +1,22 @@
+name: Backfill userPicks (one-off)
+on:
+  workflow_dispatch:
+    inputs:
+      dry:
+        description: "Dry run: show what would be written, but write nothing"
+        type: boolean
+        default: true
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --no-audit --no-fund
+      - run: node backfill-user-picks.js
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          DRY: ${{ inputs.dry && '1' || '' }}
