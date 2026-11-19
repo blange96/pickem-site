@@ -1,0 +1,106 @@
+rules_version = '2';
+
+// Paste into Firebase console -> Firestore Database -> Rules, then Publish.
+// The GitHub Action scripts (sync.js, pga-setup.js) use the Admin SDK, which skips these rules.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // Must match ADMIN_EMAIL in index.html.
+    function isAdmin() {
+      return signedIn() && request.auth.token.email == "brock.lange8@gmail.com";
+    }
+
+    // True while golfer `key` in tournament `tid` has not teed off yet.
+    // Tee times live on the tournament doc as tee: { <golferKey>: <epoch ms> }.
+    // A golfer with no tee time counts as locked, so missing data never opens a hole.
+    function beforeTee(tid, key) {
+      let tee = get(/databases/$(database)/documents/tournaments/$(tid)).data.tee;
+      return key in tee && request.time.toMillis() < tee[key];
+    }
+
+    match /tournaments/{tid} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /schedule/{year} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow write: if signedIn() && request.auth.uid == uid;
+    }
+
+    function pickPath(tid, key) {
+      return /databases/$(database)/documents/picks/$(tid + "__" + key);
+    }
+
+    function userPickPath(tid, uid) {
+      return /databases/$(database)/documents/userPicks/$(tid + "__" + uid);
+    }
+
+    // One doc per golfer per tournament, id "<tid>__<golferKey>", so only one person can hold a golfer.
+    match /picks/{pickId} {
+      allow read: if signedIn();
+
+      // Take a golfer: only for yourself, only before that golfer tees off, and
+      // only if your userPicks record (written in the same batch) names this golfer.
+      // That record holds one golfer, so you can never hold two picks at once.
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(["tid", "key", "name", "uid", "who"])
+        && request.resource.data.uid == request.auth.uid
+        && pickId == request.resource.data.tid + "__" + request.resource.data.key
+        && beforeTee(request.resource.data.tid, request.resource.data.key)
+        && getAfter(userPickPath(request.resource.data.tid, request.auth.uid)).data.key
+             == request.resource.data.key;
+
+      // Drop a golfer (the first half of a swap): only your own, and only before
+      // that golfer tees off. Once they're on the course the pick is locked.
+      // The admin can still clear any pick to fix mistakes.
+      allow delete: if isAdmin()
+        || (signedIn()
+            && resource.data.uid == request.auth.uid
+            && beforeTee(resource.data.tid, resource.data.key));
+
+      // The app never edits a pick in place. Blocking updates also stops anyone
+      // from overwriting a golfer someone else already holds.
+      allow update: if false;
+    }
+
+    // Each user's current golfer per tournament, id "<tid>__<uid>": { tid, uid, key }.
+    match /userPicks/{id} {
+      allow read: if signedIn();
+
+      // Point it at a golfer: the pick for that golfer must be yours once the batch lands.
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(["tid", "uid", "key"])
+        && request.resource.data.uid == request.auth.uid
+        && id == request.resource.data.tid + "__" + request.auth.uid
+        && getAfter(pickPath(request.resource.data.tid, request.resource.data.key)).data.uid
+             == request.auth.uid;
+
+      // Switch golfers: same checks, plus your old pick must be gone after the batch.
+      // Deleting the old pick is only allowed before that golfer tees off, so once
+      // they're on the course this record (and your pick) can't move.
+      allow update: if signedIn()
+        && request.resource.data.keys().hasOnly(["tid", "uid", "key"])
+        && resource.data.uid == request.auth.uid
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.tid == resource.data.tid
+        && getAfter(pickPath(request.resource.data.tid, request.resource.data.key)).data.uid
+             == request.auth.uid
+        && (request.resource.data.key == resource.data.key
+            || !existsAfter(pickPath(resource.data.tid, resource.data.key)));
+
+      // Only the admin removes these (when clearing a pick).
+      allow delete: if isAdmin();
+    }
+  }
+}

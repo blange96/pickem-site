@@ -618,6 +618,19 @@
           const mine = S.picks.find(
             (p) => p.tid === t.id && p.uid === S.user.uid,
           );
+          const now = Date.now(),
+            teeOf = (k) => t.entries.find((e) => e.key === k)?.tee;
+          // Once your current golfer has teed off, the pick is locked: no swapping.
+          if (mine && now >= teeOf(mine.key)) {
+            S.err = "Your pick is locked in. Your golfer has already teed off.";
+            S.draft = null;
+            return render(true);
+          }
+          if (now >= teeOf(key)) {
+            S.err = "That golfer has already teed off.";
+            S.draft = null;
+            return render(true);
+          }
           const b = writeBatch(db);
           if (mine) b.delete(doc(db, "picks", `${t.id}__${mine.key}`));
           b.set(doc(db, "picks", `${t.id}__${key}`), {
@@ -626,6 +639,13 @@
             name: t.entries.find((e) => e.key === key).name,
             uid: S.user.uid,
             who: S.user.displayName || S.user.email.split("@")[0],
+          });
+          // One record per user per tournament naming their current golfer.
+          // The Firestore rules use it to stop anyone holding two picks at once.
+          b.set(doc(db, "userPicks", `${t.id}__${S.user.uid}`), {
+            tid: t.id,
+            uid: S.user.uid,
+            key,
           });
           try {
             await b.commit();
@@ -642,6 +662,8 @@
           if (!confirm("Clear this pick?")) return;
           const b = writeBatch(db);
           b.delete(doc(db, "picks", `${tid}__${key}`));
+          const p = S.picks.find((x) => x.tid === tid && x.key === key);
+          if (p) b.delete(doc(db, "userPicks", `${tid}__${p.uid}`));
           await b.commit();
         },
         adm(f, v) {
@@ -939,7 +961,9 @@ ${S.err ? `<div class="err">${esc(S.err)}</div>` : ""}
           q = S.q.toLowerCase();
         const tp = S.picks.filter((p) => p.tid === t.id),
           taken = Object.fromEntries(tp.map((p) => [p.key, p])),
-          mine = tp.find((p) => p.uid === S.user.uid);
+          mine = tp.find((p) => p.uid === S.user.uid),
+          mineE = mine && t.entries.find((e) => e.key === mine.key),
+          locked = !!mineE && S.now >= mineE.tee;
         const rows = t.entries
           .filter((e) => e.name.toLowerCase().includes(q))
           .map((e) => {
@@ -955,7 +979,7 @@ ${S.err ? `<div class="err">${esc(S.err)}</div>` : ""}
               ? `<span class="pill">${on ? "Locked in" : "Your pick"}</span>`
               : tk
                 ? `<span class="mut">${esc(tk.who)}</span>`
-                : on
+                : on || locked
                   ? `<span class="mut">—</span>`
                   : `<button class="sm ${S.draft === e.key ? "pink" : "ghost sel"}" onclick="A.select('${e.key}')">${S.draft === e.key ? "Selected" : "Select"}</button>`;
             return {
@@ -980,7 +1004,7 @@ ${S.err ? `<div class="err">${esc(S.err)}</div>` : ""}
         const dr = t.entries.find(
             (e) => e.key === S.draft && !taken[e.key] && S.now < e.tee,
           ),
-          can = dr && !(mine && mine.key === dr.key);
+          can = dr && !locked && !(mine && mine.key === dr.key);
         return `${S.msg ? `<div class="ok">${esc(S.msg)}</div>` : ""}${S.err ? `<div class="err">${esc(S.err)}</div>` : ""}
 <div class="sticky" style="display:flex;gap:8px"><input id="q" style="flex:1;min-width:0" placeholder="Search" value="${esc(S.q)}" oninput="A.q(this.value)"><button class="pink" style="margin:4px 0 10px;white-space:nowrap" onclick="A.submit()" ${can ? "" : "disabled"}>Submit pick</button></div>
 <div class="card" id="golfers" style="overflow-x:auto"><table>${heads("f")}${rows.map((r) => r.h).join("") || "<tr><td colspan=7 class='mut'>No matches.</td></tr>"}</table></div>`;
