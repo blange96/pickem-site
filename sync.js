@@ -39,15 +39,23 @@ function analyse(event) {
     const rounds = (c.linescores || []).map((l) => ({
       period: l.period,
       holes: (l.linescores || []).length,
+      firstHole: l.linescores?.[0]?.period, // hole number they teed off on this round
     }));
     const last = rounds.filter((r) => r.holes > 0).at(-1); // most recent round with hole scores
+    // ESPN's API has no "thru" text, so build it: holes played, plus "*" (like ESPN's site) when
+    // the round started anywhere but hole 1, e.g. teeing off on 10 and through 4 holes -> "4*".
+    const thru = !last
+      ? ""
+      : last.holes >= 18
+        ? "F"
+        : `${last.holes}${last.firstHole > 1 ? "*" : ""}`;
     return {
       c,
       rounds,
       last,
       name: c.athlete?.fullName || c.athlete?.displayName || "",
       par: toPar(c.score),
-      thru: last ? (last.holes >= 18 ? "F" : String(last.holes)) : "",
+      thru,
     };
   });
   const maxRound = Math.max(0, ...rows.map((r) => r.last?.period || 0));
