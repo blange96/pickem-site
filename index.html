@@ -930,7 +930,14 @@ ${S.err ? `<div class="err">${esc(S.err)}</div>` : ""}
                 (a.grp === 0 ? b.pt - a.pt : a.tee - b.tee) ||
                 a.name.localeCompare(b.name),
         );
-        return `<div class="card" style="overflow-x:auto"><h3>${esc(t.name)}</h3><div class="mut" style="margin-bottom:8px">${(t.type || "regular")[0].toUpperCase() + (t.type || "regular").slice(1)} event · ${MULT[t.type] || 1}× multiplier</div><table>${heads("p")}${rows.map((r) => (r.me ? r.h.replace("<tr>", '<tr class="me">') : r.h)).join("")}</table></div>`;
+        return `<div class="card" style="overflow-x:auto"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap"><h3>${esc(t.name)}</h3>${cutLabel(t)}</div><div class="mut" style="margin-bottom:8px">${(t.type || "regular")[0].toUpperCase() + (t.type || "regular").slice(1)} event · ${MULT[t.type] || 1}× multiplier</div><table>${heads("p")}${rows.map((r) => (r.me ? r.h.replace("<tr>", '<tr class="me">') : r.h)).join("")}</table></div>`;
+      }
+      // Cut line saved by sync.js from ESPN: "Projected Cut" during the cut round, "Cut" once it's made.
+      function cutLabel(t) {
+        const c = t.cut;
+        if (!c || typeof c.score !== "number") return "";
+        const s = c.score === 0 ? "E" : c.score > 0 ? `+${c.score}` : String(c.score);
+        return `<div class="mut" style="font-size:13px;white-space:nowrap">${c.final ? "Cut" : "Projected Cut"}: <b>${s}</b></div>`;
       }
       function picksView() {
         const t = curT();

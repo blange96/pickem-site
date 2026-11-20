@@ -8,6 +8,9 @@ import admin from "firebase-admin"; // Firebase Admin SDK: logs in with the serv
 const { FIREBASE_SERVICE_ACCOUNT, DRY, PREVIEW } = process.env;
 const SCOREBOARD =
   "https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard";
+// The scoreboard has no cut line; ESPN's leaderboard feed (what espn.com uses) does.
+const LEADERBOARD =
+  "https://site.web.api.espn.com/apis/site/v2/sports/golf/leaderboard?league=pga&event=";
 const DAY = 864e5;
 /* ---------- helpers ---------- */
 const norm = (n) =>
@@ -76,12 +79,33 @@ function analyse(event) {
     r.pos = 1 + ranked.filter((o) => o.par < r.par).length;
   return { rows, maxRound, started: rows.some((r) => r.last) };
 }
+/* ---------- cut line (projected during the cut round, final after) ---------- */
+// Returns { score, round, count } or null (no-cut event, not published yet, or ESPN hiccup).
+// Never throws: a failure here must not stop scores from syncing.
+async function getCut(eventId) {
+  try {
+    const r = await fetch(LEADERBOARD + eventId, {
+      headers: { "User-Agent": "Mozilla/5.0" },
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const t = (await r.json()).events?.[0]?.tournament || {};
+    if (!(t.cutRound > 0) || typeof t.cutScore !== "number") return null;
+    return { score: t.cutScore, round: t.cutRound, count: t.cutCount ?? null };
+  } catch (e) {
+    console.warn(`Couldn't read cut line for event ${eventId}: ${e.message}`);
+    return null;
+  }
+}
+const fmtCut = (c) =>
+  c ? `cut ${fmtScore(c.score)} (round ${c.round}, ${c.count ?? "?"} players${c.final ? ", final" : ""})` : "no cut line";
 /* ---------- preview mode: just show ESPN's data ---------- */
-function preview(events) {
+async function preview(events) {
   for (const e of events) {
     const A = analyse(e);
+    const cut = await getCut(e.id);
+    if (cut) cut.final = A.maxRound > cut.round;
     console.log(
-      `\n${e.name} (id ${e.id}) starts ${e.date}: ${A.rows.length} golfers, latest round ${A.maxRound}, started: ${A.started}`,
+      `\n${e.name} (id ${e.id}) starts ${e.date}: ${A.rows.length} golfers, latest round ${A.maxRound}, started: ${A.started}, ${fmtCut(cut)}`,
     );
     A.rows
       .filter((r) => r.pos)
@@ -113,7 +137,7 @@ const calendar = (sb.leagues?.[0]?.calendar || []).map((c) => ({
 }));
 if (PREVIEW) {
   console.log(`Season ${season} calendar: ${calendar.length} events`);
-  preview(events);
+  await preview(events);
   process.exit(0);
 }
 if (!FIREBASE_SERVICE_ACCOUNT)
@@ -220,10 +244,12 @@ for (const d of active) {
       if (r.par != null || r.thru)
         live[key] = { s: fmtScore(r.par), t: r.thru };
     }
-    const msg = `${label}: matched ${Object.keys(live).length} of ${t.entries.length} entries to ESPN "${ev.name}" (${unmatched} ESPN golfers not in your field), ${A.rows.filter((r) => r.out).length} flagged out`;
+    const cut = await getCut(ev.id);
+    if (cut) cut.final = A.maxRound > cut.round; // round 3 started: the cut is made
+    const msg = `${label}: matched ${Object.keys(live).length} of ${t.entries.length} entries to ESPN "${ev.name}" (${unmatched} ESPN golfers not in your field), ${A.rows.filter((r) => r.out).length} flagged out, ${fmtCut(cut)}`;
     if (DRY) console.log(`[dry run] ${msg}`);
     else {
-      await d.ref.update({ results, live, resultsAt: Date.now() });
+      await d.ref.update({ results, live, resultsAt: Date.now(), cut });
       console.log(msg);
     }
   } catch (e) {
