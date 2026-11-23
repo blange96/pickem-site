@@ -52,14 +52,15 @@ So a **+5000** longshot who finishes **5th** at a regular event earns `5000 ÷ 5
 
 ## 🤖 What runs behind the scenes
 
-The site is one static page, and two GitHub Actions do the boring work so the commissioner doesn't have to.
+The site is one static page, and GitHub Actions do the boring work so the commissioner doesn't have to.
 
 | Workflow | When it runs | What it does |
 | -------- | ------------ | ------------ |
 | **Weekly field and odds** ([`pga-setup.js`](pga-setup.js)) | Tue & Wed, twice a day | Gets this week's field, Round 1 tee times, and odds from pgatour.com and saves them to Firestore. It won't write anything once the first group has teed off, so the odds stay put. When something actually changes, [`notify.js`](notify.js) emails everyone: an "odds are up" email the first time each week, then an "odds updated" email listing what moved. If nothing changes, nothing is saved and no email is sent. |
-| **Sync ESPN leaderboard** ([`sync.js`](sync.js)) | Every 5 min, Thu–Mon | Copies the live ESPN leaderboard (scores, holes played, positions, cuts) into Firestore so everyone's points update live. Keeps going until ESPN marks the event complete, so weather-delayed Monday finishes are covered. |
+| **Sync ESPN leaderboard** ([`sync.js`](sync.js)) | Every 5 min, Thu–Mon | Copies the live ESPN leaderboard (scores, holes played, positions, cuts) into Firestore so everyone's points update live. Keeps going until ESPN marks the event complete, so weather-delayed Monday finishes are covered. When it does, [`notify.js`](notify.js) emails everyone the results, once: the week's winner, the season standings and who moved, the best pick of the week, and a preview of the next event. |
+| **Results email** ([`results-email.js`](results-email.js)) | By hand only | Previews, sends, or re-sends the results email for a tournament. Use it when an event went final before the automatic email existed, or to check what the email will say. Dry run is on by default. |
 
-Both workflows can also be started by hand from the **Actions** tab, and they include dry-run and preview options so you can see what would change before anything is saved.
+All of these can be started by hand from the **Actions** tab, and they include dry-run and preview options so you can see what would change before anything is saved or sent.
 
 ---
 
@@ -75,10 +76,13 @@ pickem-site/
 ├── index.html          # the whole app: picks, schedule, standings, admin
 ├── sync.js             # ESPN → Firestore live leaderboard sync
 ├── pga-setup.js        # pgatour.com → Firestore weekly field + odds
-├── package.json        # just firebase-admin
+├── notify.js           # the emails: odds posted/updated, and weekly results
+├── results-email.js    # preview or re-send a results email by hand
+├── package.json        # firebase-admin + nodemailer
 └── .github/workflows/
-    ├── sync.yml        # runs sync.js during tournament play
-    └── pga-setup.yml   # runs pga-setup.js early in the week
+    ├── sync.yml          # runs sync.js during tournament play (and the results email at the end)
+    ├── pga-setup.yml     # runs pga-setup.js early in the week
+    └── results-email.yml # results email by hand
 ```
 
 ---

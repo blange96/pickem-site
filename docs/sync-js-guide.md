@@ -48,7 +48,7 @@ You can also start it by hand from the **Actions** tab on GitHub, using the safe
 
 ---
 
-## Part 1: Opening notes and setup — lines [1–14](../sync.js#L1-L14)
+## Part 1: Opening notes and setup — lines [1–15](../sync.js#L1-L15)
 
 ### The notes at the top — lines [1–6](../sync.js#L1-L6)
 
@@ -70,7 +70,11 @@ This borrows Google's **Firebase Admin** toolkit, which lets the script sign in 
 
 One difference from the website: the website signs in as a *regular person*, so the database's security rules limit what it can do. This script signs in as an **administrator** using the secret key, so it's allowed to update any tournament. That's why the key is kept as a GitHub secret and never put in the code.
 
-### Reading the settings — line [8](../sync.js#L8)
+### Loading the results email — line [8](../sync.js#L8)
+
+The next line borrows `notifyResults` from [`notify.js`](../notify.js), the same file that sends the "odds are up" emails. It's used once a tournament is final (see Step 7).
+
+### Reading the settings — line [9](../sync.js#L9)
 
 ```js
 const { FIREBASE_SERVICE_ACCOUNT, DRY, PREVIEW } = process.env;
@@ -78,7 +82,7 @@ const { FIREBASE_SERVICE_ACCOUNT, DRY, PREVIEW } = process.env;
 
 Grabs three settings handed to the script when it starts (these are called **environment variables**): the secret database key, and whether either safe mode is switched on. The GitHub Action fills these in.
 
-### ESPN's addresses — lines [9–14](../sync.js#L9-L14)
+### ESPN's addresses — lines [10–15](../sync.js#L10-L15)
 
 - **`SCOREBOARD`** — the web address of ESPN's golf scoreboard. This is the main source: it lists this week's tournament(s), every golfer, their scores, and the season calendar.
 - **`LEADERBOARD`** — a second ESPN address with one extra thing the scoreboard lacks: **the cut line**. (It's the same feed espn.com uses for its own leaderboard page.)
@@ -86,22 +90,22 @@ Grabs three settings handed to the script when it starts (these are called **env
 
 ---
 
-## Part 2: Helper tools — lines [15–37](../sync.js#L15-L37)
+## Part 2: Helper tools — lines [16–38](../sync.js#L16-L38)
 
 Small, single-purpose tools used throughout the script.
 
-- **`norm`** (lines [16–23](../sync.js#L16-L23)) — "normalizes" a golfer's name so two spellings can be compared fairly. It removes accents, lowercases everything, and strips punctuation. The comment shows examples: "Sami Välimäki" becomes "sami valimaki", and "J.J. Spaun" becomes "jj spaun". Without this, ESPN and the league's list might spell the same golfer slightly differently and fail to match.
-- **`toPar`** (lines [24–28](../sync.js#L24-L28)) — turns a golf score written as text ("E", "-7", "+2") into a real number (0, -7, 2) so the computer can compare who's ahead.
-- **`fmtScore`** (lines [29–30](../sync.js#L29-L30)) — the reverse: turns a number back into golf-style text for display (0 becomes "E", 2 becomes "+2").
-- **`words`** and **`overlap`** (lines [31–37](../sync.js#L31-L37)) — count how many meaningful words two tournament names share. "Masters Tournament" and "The Masters" share one ("masters"). This is how the script figures out which ESPN event matches which league tournament, even if the names aren't identical. Words of 2 letters or fewer (like "of" or "at") are ignored.
+- **`norm`** (lines [17–24](../sync.js#L17-L24)) — "normalizes" a golfer's name so two spellings can be compared fairly. It removes accents, lowercases everything, and strips punctuation. The comment shows examples: "Sami Välimäki" becomes "sami valimaki", and "J.J. Spaun" becomes "jj spaun". Without this, ESPN and the league's list might spell the same golfer slightly differently and fail to match.
+- **`toPar`** (lines [25–29](../sync.js#L25-L29)) — turns a golf score written as text ("E", "-7", "+2") into a real number (0, -7, 2) so the computer can compare who's ahead.
+- **`fmtScore`** (lines [30–31](../sync.js#L30-L31)) — the reverse: turns a number back into golf-style text for display (0 becomes "E", 2 becomes "+2").
+- **`words`** and **`overlap`** (lines [32–38](../sync.js#L32-L38)) — count how many meaningful words two tournament names share. "Masters Tournament" and "The Masters" share one ("masters"). This is how the script figures out which ESPN event matches which league tournament, even if the names aren't identical. Words of 2 letters or fewer (like "of" or "at") are ignored.
 
 ---
 
-## Part 3: Making sense of ESPN's data (`analyse`) — lines [38–81](../sync.js#L38-L81)
+## Part 3: Making sense of ESPN's data (`analyse`) — lines [39–82](../sync.js#L39-L82)
 
 ESPN's data is a big, deeply nested pile of information. **`analyse`** takes one tournament from that pile and boils it down to what the league cares about. It's the most important piece of logic in the file.
 
-### Step 1: Read each golfer — lines [40–63](../sync.js#L40-L63)
+### Step 1: Read each golfer — lines [41–64](../sync.js#L41-L64)
 
 For every golfer in the tournament, it collects:
 
@@ -113,7 +117,7 @@ For every golfer in the tournament, it collects:
   - otherwise the number of holes played, like **"12"**
   - with a **"\*"** added if they started on a hole other than 1. For example, a golfer who teed off on the back nine (hole 10) and has played 4 holes shows **"4\*"**. This matches how ESPN's own website shows it.
 
-### Step 2: Figure out who's out — lines [64–75](../sync.js#L64-L75)
+### Step 2: Figure out who's out — lines [65–76](../sync.js#L65-L76)
 
 Golfers who miss the cut, withdraw, or are disqualified earn **0 points**, so the script needs to spot them. It first works out the **latest round** anyone has started. Once that's round 3 or later, the cut has happened. Then for each golfer it checks three things:
 
@@ -123,17 +127,17 @@ Golfers who miss the cut, withdraw, or are disqualified earn **0 points**, so th
 
 If any of these is true, the golfer is marked as **out**, along with a short reason (used in the preview printout).
 
-### Step 3: Work out positions — lines [76–79](../sync.js#L76-L79)
+### Step 3: Work out positions — lines [77–80](../sync.js#L77-L80)
 
 Among everyone still in, it ranks golfers by score. **Ties share the better position**: a golfer's position is 1 plus the number of golfers with a strictly better score. So if two golfers are tied behind two others, both are 3rd (shown as "T3" on TV), and both earn points as if they finished 3rd. This matches the league's scoring rules.
 
-### What it hands back — line [80](../sync.js#L80)
+### What it hands back — line [81](../sync.js#L81)
 
 The list of golfers with all of the above, the latest round being played, and a yes/no for "has anyone started playing yet?"
 
 ---
 
-## Part 4: The cut line (`getCut`) — lines [82–98](../sync.js#L82-L98)
+## Part 4: The cut line (`getCut`) — lines [83–99](../sync.js#L83-L99)
 
 **`getCut`** asks ESPN's second address (`LEADERBOARD`) for the **cut line**, the score golfers need to make it to the weekend. It returns the cut score, which round the cut is made after, and how many players are projected to make it.
 
@@ -144,9 +148,9 @@ Two design choices worth noticing:
 - **It never crashes the script.** The comment says it outright: "a failure here must not stop scores from syncing." If ESPN's cut-line feed is down or acting strangely, it prints a warning and moves on without a cut line. Scores are more important than the cut line.
 - **It returns nothing for events without a cut** (some events don't have one), or before ESPN has published it.
 
-**`fmtCut`** (lines [123–124](../sync.js#L123-L124)) just turns the cut info into a readable sentence for the log, like "cut +2 (round 2, 70 players, final)".
+**`fmtCut`** (lines [124–125](../sync.js#L124-L125)) just turns the cut info into a readable sentence for the log, like "cut +2 (round 2, 70 players, final)".
 
-### Is the tournament finished? (`statusOf` and `getStatus`) — lines [99–122](../sync.js#L99-L122)
+### Is the tournament finished? (`statusOf` and `getStatus`) — lines [100–123](../sync.js#L100-L123)
 
 Weather sometimes pushes the final round into **Monday**. ESPN's "end date" doesn't change when that happens, so the script uses ESPN's own **status** instead:
 
@@ -155,7 +159,7 @@ Weather sometimes pushes the final round into **Monday**. ESPN's "end date" does
 
 ---
 
-## Part 5: Preview mode — lines [125–147](../sync.js#L125-L147)
+## Part 5: Preview mode — lines [126–148](../sync.js#L126-L148)
 
 **`preview`** is a safe "just show me" mode. It **doesn't touch the database at all** and doesn't even need the secret key. For each tournament ESPN currently lists, it prints:
 
@@ -167,11 +171,11 @@ This is useful for checking that ESPN's data looks right, or that the "who's out
 
 ---
 
-## Part 6: The main routine — lines [148–302](../sync.js#L148-L302)
+## Part 6: The main routine — lines [149–315](../sync.js#L149-L315)
 
 This is where the script actually does its job, top to bottom. The earlier parts were all tools; this part uses them.
 
-### Step 1: Download ESPN's scoreboard — lines [149–161](../sync.js#L149-L161)
+### Step 1: Download ESPN's scoreboard — lines [150–162](../sync.js#L150-L162)
 
 It downloads the scoreboard from ESPN. If ESPN doesn't answer properly, the script stops with an error. (The `User-Agent: Mozilla/5.0` bit makes the request look like an ordinary web browser, since some sites treat automated requests differently.)
 
@@ -180,26 +184,26 @@ From the download it pulls out:
 - **`season`** — the season year
 - **`calendar`** — the full season schedule (every event's name and dates)
 
-### Step 2: If in preview mode, show and stop — lines [162–166](../sync.js#L162-L166)
+### Step 2: If in preview mode, show and stop — lines [163–167](../sync.js#L163-L167)
 
 If `PREVIEW` is on, it prints the calendar size, runs the preview from Part 5, and exits. Nothing else happens.
 
-### Step 3: Connect to the database — lines [167–172](../sync.js#L167-L172)
+### Step 3: Connect to the database — lines [168–173](../sync.js#L168-L173)
 
 If the secret key is missing, it stops with a clear error. Otherwise it signs in to Firestore as an administrator.
 
-### Step 4: Keep the season schedule up to date — lines [173–192](../sync.js#L173-L192)
+### Step 4: Keep the season schedule up to date — lines [174–193](../sync.js#L174-L193)
 
 As a bonus job, it saves ESPN's season calendar to the database so the website's **Schedule tab** can list every event. It's careful about this:
 
 - It **only saves when something has changed**, so it isn't rewriting the same data every 5 minutes.
 - It **never overwrites a schedule the commissioner imported by hand** (through the Admin tab's "Import season schedule" box). A hand-made schedule is marked `"manual"`, and the script leaves those alone.
 
-### Step 5: Stop if ESPN has nothing this week — lines [193–196](../sync.js#L193-L196)
+### Step 5: Stop if ESPN has nothing this week — lines [194–197](../sync.js#L194-L197)
 
 If ESPN lists no events (an off week), it says so and exits.
 
-### Step 6: Find which league tournaments are live — lines [197–225](../sync.js#L197-L225)
+### Step 6: Find which league tournaments are live — lines [198–236](../sync.js#L198-L236)
 
 It loads all of the league's tournaments from the database and keeps only those that are **live right now**, meaning:
 
@@ -210,19 +214,19 @@ It loads all of the league's tournaments from the database and keeps only those 
 
 That last check is what the comment calls making the schedule "dynamic." The GitHub Action wakes up early Thursday morning, but this check makes those early runs quietly exit until real golf has started. If nothing is live, it says so and exits.
 
-### Step 7: Update each live tournament — lines [226–302](../sync.js#L226-L302)
+### Step 7: Update each live tournament — lines [237–315](../sync.js#L237-L315)
 
 For each live tournament, it does the following. The whole thing is wrapped in a safety net (`try` / `catch`), so if one tournament has a problem, it logs the error and still moves on to the next. (This matters in weeks with two events, like an opposite-field event.)
 
-**a. Skip team events** — lines [230–233](../sync.js#L230-L233). If any "golfer" name contains a slash (like "Smith / Jones"), it's a two-person team event. ESPN's data doesn't fit that format, so the script skips it and leaves it for the commissioner's Admin paste box.
+**a. Skip team events** — lines [241–244](../sync.js#L241-L244). If any "golfer" name contains a slash (like "Smith / Jones"), it's a two-person team event. ESPN's data doesn't fit that format, so the script skips it and leaves it for the commissioner's Admin paste box.
 
-**b. Find the matching ESPN event** — lines [234–253](../sync.js#L234-L253). It looks for ESPN events that start within a day of the league tournament, then picks the one whose name shares the most words (using `overlap`). If there are several candidates and none share a word, it gives up rather than guess wrong.
+**b. Find the matching ESPN event** — lines [245–265](../sync.js#L245-L265). It looks for ESPN events that start within a day of the league tournament, then picks the one whose name shares the most words (using `overlap`). If there are several candidates and none share a word, it gives up rather than guess wrong.
 
-If no match turns up but an earlier run saved ESPN's event ID, the tournament has probably just dropped off ESPN's scoreboard. In that case it asks `getStatus` whether the event is complete, and if so it marks the tournament **final** without touching the results.
+If no match turns up but an earlier run saved ESPN's event ID, the tournament has probably just dropped off ESPN's scoreboard. In that case it asks `getStatus` whether the event is complete, and if so it marks the tournament **final** without touching the results, then sends the results email.
 
-**c. Make sure play has started** — lines [254–259](../sync.js#L254-L259). It runs `analyse` on the ESPN event. If ESPN has no scores yet, it skips for now.
+**c. Make sure play has started** — lines [266–271](../sync.js#L266-L271). It runs `analyse` on the ESPN event. If ESPN has no scores yet, it skips for now.
 
-**d. Match ESPN's golfers to the league's golfers** — lines [260–287](../sync.js#L260-L287). This is the trickiest step, because ESPN and the league's list might write names a little differently. For each ESPN golfer it tries:
+**d. Match ESPN's golfers to the league's golfers** — lines [272–299](../sync.js#L272-L299). This is the trickiest step, because ESPN and the league's list might write names a little differently. For each ESPN golfer it tries:
 
 1. **The full name** (after cleaning it up with `norm`).
 2. If that fails, **last name + first initial**. "Scheffler" + "S" would match "Scottie Scheffler" even if one list wrote "Scott Scheffler."
@@ -234,15 +238,16 @@ For each golfer it matches, it records:
 
 ESPN golfers who aren't in the league's field are simply counted and skipped.
 
-**e. Get the cut line** — lines [288–289](../sync.js#L288-L289). Calls `getCut` from Part 4 and marks it final once the next round has started.
+**e. Get the cut line** — lines [300–301](../sync.js#L300-L301). Calls `getCut` from Part 4 and marks it final once the next round has started.
 
-**f. Save, or just report** — lines [290–297](../sync.js#L290-L297). It builds a one-line summary, such as: "Masters (2026-04-09): matched 89 of 91 entries to ESPN "Masters Tournament" (0 ESPN golfers not in your field), 0 flagged out, cut +2 (round 2, 54 players)."
+**f. Save, or just report** — lines [302–310](../sync.js#L302-L310). It builds a one-line summary, such as: "Masters (2026-04-09): matched 89 of 91 entries to ESPN "Masters Tournament" (0 ESPN golfers not in your field), 0 flagged out, cut +2 (round 2, 54 players)."
 
 - In **dry-run mode** (`DRY`), it prints that summary with "[dry run]" in front and **saves nothing**.
 - Otherwise it **saves** the results, the live scores, the cut line, and the current time to the database. That time is what powers the "Leaderboard updated 2:14 PM (3 min ago)" line on the Picks tab. It also saves ESPN's event ID and status, e.g. "Round 4 - Suspended", which the website shows next to the cut line.
 - When ESPN says the event is **complete**, it also saves `final: true`. From then on, later runs skip this tournament, and the website shows the winner on the Schedule tab.
+- Right after that, `sendResults` (lines [206–215](../sync.js#L206-L215)) emails everyone the **results**: the week's winner, the season standings and who moved, the best pick of the week, and next week's event. `notify.js` remembers that the email went out, so it's only ever sent once per tournament. In dry-run mode it prints a sample instead of sending. If the email fails, the tournament stays final and the run shows a red ❌. You can send it again with the **Results email** workflow.
 
-**g. If anything went wrong** — lines [298–301](../sync.js#L298-L301). It prints the error and marks the run as failed, so GitHub shows a red ❌ in the Actions tab. That's your signal to take a look.
+**g. If anything went wrong** — lines [311–314](../sync.js#L311-L314). It prints the error and marks the run as failed, so GitHub shows a red ❌ in the Actions tab. That's your signal to take a look.
 
 ---
 
@@ -261,13 +266,13 @@ ESPN golfers who aren't in the league's field are simply counted and skipped.
 | I want to change… | Look here |
 | --- | --- |
 | How often it runs, or which days and hours | [`.github/workflows/sync.yml`](../.github/workflows/sync.yml), the `cron` line |
-| Where the leaderboard data comes from | `SCOREBOARD` and `LEADERBOARD`, lines [9–13](../sync.js#L9-L13) |
-| How "Thru" is displayed (e.g. the `*` for back-nine starts) | Lines [48–54](../sync.js#L48-L54) |
-| What counts as "out" (missed cut, withdrew, DQ) | Lines [66–75](../sync.js#L66-L75) |
-| How ties are ranked | Lines [76–79](../sync.js#L76-L79) |
-| How long a tournament can stay "live" if ESPN never marks it complete (currently 7 days) | Line [204](../sync.js#L204) |
-| How golfer names are matched | Lines [260–282](../sync.js#L260-L282) |
-| Whether a hand-imported schedule can be overwritten | Lines [177–182](../sync.js#L177-L182) |
+| Where the leaderboard data comes from | `SCOREBOARD` and `LEADERBOARD`, lines [10–14](../sync.js#L10-L14) |
+| How "Thru" is displayed (e.g. the `*` for back-nine starts) | Lines [49–55](../sync.js#L49-L55) |
+| What counts as "out" (missed cut, withdrew, DQ) | Lines [67–76](../sync.js#L67-L76) |
+| How ties are ranked | Lines [77–80](../sync.js#L77-L80) |
+| How long a tournament can stay "live" if ESPN never marks it complete (currently 7 days) | Line [205](../sync.js#L205) |
+| How golfer names are matched | Lines [272–294](../sync.js#L272-L294) |
+| Whether a hand-imported schedule can be overwritten | Lines [178–183](../sync.js#L178-L183) |
 
 > **Note:** the scoring formula itself (odds ÷ position ÷ 100 × multiplier) is **not** in this file. `sync.js` only saves positions. The website does the points math. See section 3.7 of the [`index.html` guide](index-html-guide.md).
 

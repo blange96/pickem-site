@@ -5,6 +5,7 @@
 //   PREVIEW=1  print what ESPN returns (no Firebase needed, nothing written)
 //   DRY=1      read Firestore and show what would be written, but write nothing
 import admin from "firebase-admin"; // Firebase Admin SDK: logs in with the service account and reads/writes Firestore
+import { notifyResults } from "./notify.js"; // the end-of-tournament results email
 const { FIREBASE_SERVICE_ACCOUNT, DRY, PREVIEW } = process.env;
 const SCOREBOARD =
   "https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard";
@@ -202,6 +203,16 @@ const snap = await db.collection("tournaments").get();
 // first tee time has passed. Weather delays that push play into Monday keep syncing until ESPN calls it
 // done; MAX_DAYS is only a safety net so a tournament ESPN never marks complete doesn't sync forever.
 const MAX_DAYS = 7;
+// Once a tournament is final: email everyone the results (notify.js sends it only once per tournament).
+// A failed email never undoes the final mark; re-send by hand with the "Results email" workflow.
+async function sendResults(id, doc) {
+  try {
+    await notifyResults({ admin, id, dry: !!DRY, doc });
+  } catch (e) {
+    console.error(`Results email for ${id}: ${e.message}`);
+    process.exitCode = 1;
+  }
+}
 const active = snap.docs.filter((d) => {
   const t = d.data();
   const start = Date.parse(`${t.date}T00:00:00Z`);
@@ -248,6 +259,7 @@ for (const d of active) {
           await d.ref.update({ final: true, finalAt: Date.now(), status: st.detail });
           console.log(`${label}: off ESPN's scoreboard, ESPN says "${st.detail}". Marked final.`);
         }
+        await sendResults(d.id);
       } else console.log(`${label}: no matching ESPN event, skipping.`);
       continue;
     }
@@ -295,6 +307,7 @@ for (const d of active) {
       await d.ref.update(update);
       console.log(msg);
     }
+    if (st.done) await sendResults(d.id, update);
   } catch (e) {
     console.error(`${label}: ${e.message}`);
     process.exitCode = 1;

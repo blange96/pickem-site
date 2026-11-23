@@ -1,0 +1,39 @@
+name: Results email
+# sync.js sends this automatically when ESPN marks a tournament complete.
+# Run it by hand to preview it, send it for an older tournament, or re-send it.
+on:
+  workflow_dispatch:
+    inputs:
+      tournament_id:
+        description: "Tournament doc id, e.g. the_rsm_classic_2026-11-19 (blank = most recent final one)"
+        required: false
+      dry:
+        description: "Dry run: print a sample email, send nothing"
+        type: boolean
+        default: true
+      force:
+        description: "Send even if this tournament's results email already went out"
+        type: boolean
+        default: false
+jobs:
+  email:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --no-audit --no-fund
+      - run: node results-email.js
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          TOURNAMENT_ID: ${{ inputs.tournament_id }}
+          DRY: ${{ inputs.dry && '1' || '' }}
+          FORCE: ${{ inputs.force && '1' || '' }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          MAIL_FROM: ${{ secrets.MAIL_FROM }}
+          SITE_URL: ${{ vars.SITE_URL }}
