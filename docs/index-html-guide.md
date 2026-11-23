@@ -22,7 +22,7 @@ One unusual thing about this site: the page starts out almost **completely empty
 
 ## Part 1: The page skeleton
 
-**Lines [1–6](../index.html#L1-L6), [313–316](../index.html#L313-L316), and [1386–1389](../index.html#L1386-L1389)**
+**Lines [1–6](../index.html#L1-L6), [313–316](../index.html#L313-L316), and [1395–1398](../index.html#L1395-L1398)**
 
 ```html
 <!doctype html>
@@ -268,7 +268,7 @@ So a +5000 golfer who finishes 5th at a regular event earns 5000 ÷ 5 ÷ 100 × 
 
 If you ever want to change how scoring works, **this is the one line to edit**.
 
-### 3.8 Live connection to the database — lines [461–518](../index.html#L461-L518)
+### 3.8 Live connection to the database — lines [461–515](../index.html#L461-L515)
 
 ```js
 function startData() {
@@ -282,14 +282,14 @@ function startData() {
 This sets up four **live feeds** from the database. Instead of asking "anything new?" over and over, the page subscribes to each list and the database pushes changes to it instantly. That's why you see someone else's pick appear without refreshing.
 
 The four feeds are:
-1. **tournaments** — every event with its field, odds, tee times, and results. When these first load, it also automatically picks which tournament to show: the next upcoming one (or one that started in the last 4 days), otherwise the most recent.
+1. **tournaments** — every event with its field, odds, tee times, and results. When these first load, it also automatically picks which tournament to show: the first one that isn't over yet (see `isOver` below), so a weather-delayed Monday finish stays on screen. If every tournament is over, it shows the most recent.
 2. **users** — everyone's display name.
 3. **schedule** — the season calendar. It grabs this year's schedule, or the newest one available.
 4. **picks** — every pick everyone has made.
 
 After each update, it calls `render()` to redraw the screen. The `unsub` list keeps track of these feeds so they can be switched off when someone signs out.
 
-### 3.9 Watching for sign-in, and the 30-second clock — lines [519–536](../index.html#L519-L536)
+### 3.9 Watching for sign-in, and the 30-second clock — lines [516–533](../index.html#L516-L533)
 
 - **`onAuthStateChanged`** runs whenever someone signs in or out. When someone signs in, it:
   1. Turns off any old live feeds.
@@ -301,7 +301,7 @@ After each update, it calls `render()` to redraw the screen. The `unsub` list ke
 
 - **`setInterval(..., 30000)`** is a timer that goes off every 30 seconds (30,000 milliseconds). It updates the clock in `S.now` and redraws. This is how golfers automatically become **locked** the moment they tee off, and how "updated 3 min ago" stays accurate, without anyone refreshing the page.
 
-### 3.10 Actions: what happens when you click things — lines [538–827](../index.html#L538-L827)
+### 3.10 Actions: what happens when you click things — lines [535–824](../index.html#L535-L824)
 
 ```js
 const A = (window.A = { tab(t) {...}, login() {...}, submit() {...}, ... });
@@ -309,7 +309,7 @@ const A = (window.A = { tab(t) {...}, login() {...}, submit() {...}, ... });
 
 `A` is a **collection of every action** a person can take. In the page, buttons say things like `onclick="A.submit()"`, meaning "when clicked, run the `submit` action." Here they are, grouped by purpose:
 
-#### Getting around — lines [540–576](../index.html#L540-L576)
+#### Getting around — lines [537–573](../index.html#L537-L573)
 
 | Action | What it does |
 | --- | --- |
@@ -320,13 +320,13 @@ const A = (window.A = { tab(t) {...}, login() {...}, submit() {...}, ... });
 | `hs` | Sort a table when you click a column header. Click once to sort, again to reverse. (Points sort highest-first by default; everything else lowest-first.) |
 | `mode` | Flip the sign-in screen between "Sign in" and "Create account." |
 
-#### Signing in and out — lines [577–608](../index.html#L577-L608)
+#### Signing in and out — lines [574–605](../index.html#L574-L605)
 
 - **`login`** reads the email and password boxes. In "Create account" mode it makes a new account and saves the display name; otherwise it signs in. If something goes wrong (wrong password, etc.), it shows Firebase's error message in red.
 - **`google`** opens the "Sign in with Google" pop-up.
 - **`out`** signs you out.
 
-#### Making a pick — lines [609–660](../index.html#L609-L660)
+#### Making a pick — lines [606–657](../index.html#L606-L657)
 
 - **`select`** — clicking "Select" on a golfer highlights them in pink (stored in `S.draft`). Clicking again un-selects.
 - **`submit`** — the "Submit pick" button. This is the most rule-heavy action. In order, it:
@@ -336,23 +336,23 @@ const A = (window.A = { tab(t) {...}, login() {...}, submit() {...}, ... });
   4. If the save fails — most likely because someone else grabbed that golfer a split second earlier — it shows a friendly error.
   5. On success, it scrolls you back to the top so you can see your pick in the table.
 
-#### Clearing a pick (admin) — lines [661–668](../index.html#L661-L668)
+#### Clearing a pick (admin) — lines [658–665](../index.html#L658-L665)
 
 - **`clear`** asks "Clear this pick?" and, if confirmed, deletes that pick (and its matching `userPicks` record). Used for do-overs.
 
-#### Importing the season schedule (admin) — lines [669–717](../index.html#L669-L717)
+#### Importing the season schedule (admin) — lines [666–714](../index.html#L666-L714)
 
 - **`adm`** remembers what the commissioner types into the Admin form boxes.
 - **`fromSched`** — choosing a tournament from "Start from the schedule" fills in the name, date, and event type automatically.
 - **`spt`**, **`sparse`**, **`ssave`** — the three steps of the "Import season schedule" box: remember the pasted text, **preview** it (reading it with `parseSched`, described in 3.12), then **save** it to the database.
 
-#### Setting up a tournament (admin) — lines [718–759](../index.html#L718-L759)
+#### Setting up a tournament (admin) — lines [715–756](../index.html#L715-L756)
 
 - **`parse`** — the "Preview" button. Makes sure a name, date, and pasted table were all provided, then uses `parseField` (3.6) to build the golfer list.
 - **`odds`** — lets the commissioner type in any odds that were missing from the paste.
 - **`save`** — refuses to save if any odds are still missing, then saves the tournament (name, type, date, time zone, every golfer with their odds and tee time). If the tournament already existed, it keeps any results that were already entered.
 
-#### Updating the leaderboard by hand (admin) — lines [760–826](../index.html#L760-L826)
+#### Updating the leaderboard by hand (admin) — lines [757–823](../index.html#L757-L823)
 
 - **`results`** — the manual backup for live scoring (normally [`sync.js`](../sync.js) does this automatically every 5 minutes). The commissioner pastes the ESPN leaderboard, and this action:
   1. Finds the header row to figure out which column is the **score** and which is **thru** (holes played).
@@ -360,21 +360,21 @@ const A = (window.A = { tab(t) {...}, login() {...}, submit() {...}, ... });
   3. Reads the **position** from the first column: "T5" becomes 5, and "CUT", "MC", "WD", "DQ" become 0 (no points).
   4. Saves everything and reports how many golfers were updated and how many couldn't be found.
 
-Right after the actions, line [828](../index.html#L828) defines **`curT`**, shorthand for "the tournament currently selected in the dropdown."
+Right after the actions, line [825](../index.html#L825) defines **`curT`**, shorthand for "the tournament currently selected in the dropdown."
 
-### 3.11 Views: building each screen — lines [830–1356](../index.html#L830-L1356)
+### 3.11 Views: building each screen — lines [827–1365](../index.html#L827-L1365)
 
 A **view** is a function that builds the content for one screen (or one piece of a screen) as a chunk of HTML text. They read from `S` and produce what you see. None of them change any data; they just display it.
 
-#### Sign-in screen — lines [831–841](../index.html#L831-L841)
+#### Sign-in screen — lines [828–838](../index.html#L828-L838)
 
 **`loginView`** draws the league title, email and password boxes (plus a "Display name" box in Create-account mode), any error message, the "Sign in" and "Continue with Google" buttons, and the link to switch modes.
 
-#### Tournament dropdown — lines [843–847](../index.html#L843-L847)
+#### Tournament dropdown — lines [840–844](../index.html#L840-L844)
 
 **`tourSelect`** builds the dropdown listing every tournament with its date. It's used on both the Picks and Admin tabs.
 
-#### Sorting helpers — lines [849–875](../index.html#L849-L875)
+#### Sorting helpers — lines [846–872](../index.html#L846-L872)
 
 Behind-the-scenes tools that make clickable, sortable columns work:
 - **`lastN`** — pulls out a golfer's last name, so "Golfer" sorts by last name.
@@ -384,15 +384,15 @@ Behind-the-scenes tools that make clickable, sortable columns work:
 - **`posv`** — decides where a golfer sorts in the "Pos" column: finishers by position, then missed cuts, then golfers who are on the course but don't have a position yet, then golfers who haven't teed off (in tee-time order).
 - **`liveOf`** — gets a golfer's live score and holes played, showing a dash when there's nothing yet.
 
-#### The Picks tab — lines [876–1018](../index.html#L876-L1018)
+#### The Picks tab — lines [873–1023](../index.html#L873-L1023)
 
-This tab is built from four pieces stacked on top of each other (see **`picksView`**, lines [942–947](../index.html#L942-L947)):
+This tab is built from four pieces stacked on top of each other (see **`picksView`**, lines [947–952](../index.html#L947-L952)):
 
 1. **The tournament dropdown** (above).
-2. **"Leaderboard updated…" line** — **`updatedAt`**, lines [948–965](../index.html#L948-L965). Shows when scores were last refreshed, like "Leaderboard updated 2:14 PM (3 min ago)."
-3. **The league picks table** — **`picksTable`**, lines [876–934](../index.html#L876-L934). One row per league member: their name, their golfer, odds, live score, holes played, position (or tee time if they haven't started), and points. If you haven't picked, your row says "Hasn't picked yet" as a link that scrolls you down to the golfer list. By default it sorts finished golfers by points, then golfers on the course, then golfers who haven't teed off, then people with no pick. Your row is highlighted green. It also shows the event type and multiplier under the title.
-   - **`cutLabel`**, lines [936–941](../index.html#L936-L941), shows "Projected Cut: +2" (or "Cut: +2" once it's official) next to the tournament name, using data saved by `sync.js`.
-4. **The golfer list** — **`golfers`**, lines [966–1018](../index.html#L966-L1018). The full field, filtered by whatever's in the search box. The first column changes depending on the situation:
+2. **"Leaderboard updated…" line** — **`updatedAt`**, lines [953–970](../index.html#L953-L970). Shows when scores were last refreshed, like "Leaderboard updated 2:14 PM (3 min ago)."
+3. **The league picks table** — **`picksTable`**, lines [873–931](../index.html#L873-L931). One row per league member: their name, their golfer, odds, live score, holes played, position (or tee time if they haven't started), and points. If you haven't picked, your row says "Hasn't picked yet" as a link that scrolls you down to the golfer list. By default it sorts finished golfers by points, then golfers on the course, then golfers who haven't teed off, then people with no pick. Your row is highlighted green. It also shows the event type and multiplier under the title.
+   - **`cutLabel`**, lines [933–946](../index.html#L933-L946), shows ESPN's round status while play is still going (e.g. "Round 4 - Suspended") and "Projected Cut: +2" (or "Cut: +2" once it's official) next to the tournament name, using data saved by `sync.js`.
+4. **The golfer list** — **`golfers`**, lines [971–1023](../index.html#L971-L1023). The full field, filtered by whatever's in the search box. The first column changes depending on the situation:
    - **"Your pick"** pill (or **"Locked in"** once your golfer tees off),
    - **someone else's name** if another member took that golfer,
    - **a dash** if the golfer has teed off or your own pick is locked,
@@ -402,34 +402,34 @@ This tab is built from four pieces stacked on top of each other (see **`picksVie
 
 If there are no tournaments yet, `picksView` shows a friendly placeholder message instead.
 
-#### Schedule import helpers — lines [1019–1084](../index.html#L1019-L1084)
+#### Schedule import helpers — lines [1024–1093](../index.html#L1024-L1093)
 
 - **`toISO`** — accepts dates written in different styles ("2026-04-09", "4/9/26", "Apr 9 2026") and converts them to one standard format.
 - **`parseSched`** — reads schedule rows pasted from Excel (Date Start, Date End, Tournament, Venue, Type). It sorts each event into major, signature, or regular based on the Type column, and keeps a list of rows it couldn't read.
 - **`cap`**, **`fd`**, **`addDays`** — small formatting helpers: capitalize a word, show a date as "Apr 9", and add days to a date.
 - **`overlap`** — counts how many words two tournament names share. Used to match schedule entries to tournaments even if the names are written slightly differently ("the Masters" vs "Masters Tournament").
-- **`isOver`** — decides a tournament is finished once about 4½ days have passed since Round 1.
+- **`isOver`** — decides a tournament is finished. It is finished as soon as `sync.js` has marked it **final** (ESPN says it's complete). For tournaments `sync.js` is tracking, a 7-day safety limit applies, which covers weather delays into Monday. Tournaments filled only from the Admin paste box (such as team events) still count as finished about 4½ days after Round 1.
 
-#### Per-tournament results helpers — lines [1085–1108](../index.html#L1085-L1108)
+#### Per-tournament results helpers — lines [1094–1117](../index.html#L1094-L1117)
 
 - **`tourRows`** — for a given tournament, lists each member with their pick, finishing position, and points.
 - **`winnerOf`** — figures out who scored the most points in a tournament (handling ties by listing everyone tied). This fills the "Winner" column on the Schedule tab.
 
-#### The Standings tab — lines [1109–1218](../index.html#L1109-L1218)
+#### The Standings tab — lines [1118–1227](../index.html#L1118-L1227)
 
 **`standView`** puts two cards together:
 
-1. **Season standings** — **`boardHtml`**, lines [1205–1218](../index.html#L1205-L1218). Adds up every member's points across every tournament and lists them from highest to lowest, with your row highlighted.
-2. **"Points over the season" chart** — **`chartCard`**, lines [1112–1142](../index.html#L1112-L1142), and **`lineChart`**, lines [1153–1204](../index.html#L1153-L1204).
+1. **Season standings** — **`boardHtml`**, lines [1214–1227](../index.html#L1214-L1227). Adds up every member's points across every tournament and lists them from highest to lowest, with your row highlighted.
+2. **"Points over the season" chart** — **`chartCard`**, lines [1121–1151](../index.html#L1121-L1151), and **`lineChart`**, lines [1162–1213](../index.html#L1162-L1213).
    - `chartCard` works out each person's running total after each tournament and assigns colors.
-   - **`COLORS`**, lines [1143–1152](../index.html#L1143-L1152), is the list of line colors. Colors are assigned in alphabetical order by name, so each person keeps the same color every time.
+   - **`COLORS`**, lines [1152–1161](../index.html#L1152-L1161), is the list of line colors. Colors are assigned in alphabetical order by name, so each person keeps the same color every time.
    - `lineChart` actually **draws the chart** as an SVG (a type of image made from shapes, drawn by the code rather than loaded from a file). It works out a neat scale for the side (like 0, 5, 10, 15), draws the faint gridlines, draws one line per person — **your line is drawn thicker and on top** — adds dots you can hover over to see exact numbers, and puts a color legend underneath, ordered by who's winning.
 
-#### Tournament recap card — lines [1219–1226](../index.html#L1219-L1226)
+#### Tournament recap card — lines [1228–1235](../index.html#L1228-L1235)
 
 **`cardHtml`** builds the recap for one tournament: each member, their golfer, odds, finishing position ("P5", "CUT/WD"), and points, highest first. This is the content of the pop-up on the Schedule tab.
 
-#### The Schedule tab — lines [1227–1287](../index.html#L1227-L1287)
+#### The Schedule tab — lines [1236–1296](../index.html#L1236-L1296)
 
 **`scheduleView`** builds the season calendar. The tricky part is that the **schedule** (the calendar of events) and the **tournaments** (events actually set up for picks) are stored separately, so it matches them up: same start date (within a day), and similar names. Then for each row it shows:
 - start and end dates, venue, and event label,
@@ -438,12 +438,12 @@ If there are no tournaments yet, `picksView` shows a friendly placeholder messag
 
 Any tournaments that didn't match a schedule entry are added in too, so nothing gets lost.
 
-#### The pop-up window — lines [1288–1298](../index.html#L1288-L1298)
+#### The pop-up window — lines [1297–1307](../index.html#L1297-L1307)
 
 - **`modalHtml`** wraps the tournament recap in the dark overlay with a "Close" button. Clicking outside the white box also closes it.
 - The `keydown` listener lets you press **Esc** to close it.
 
-#### The Admin tab — lines [1299–1356](../index.html#L1299-L1356)
+#### The Admin tab — lines [1308–1365](../index.html#L1308-L1365)
 
 **`adminView`** is only reachable by the commissioner. It builds four cards:
 
@@ -452,7 +452,7 @@ Any tournaments that didn't match a schedule entry are added in too, so nothing 
 3. **Import season schedule** — a paste box for the Excel rows, then a preview of every event with its type, and a "Save schedule" button.
 4. **Clear a pick** — every pick for the selected tournament, each with a "Clear" button.
 
-### 3.12 The rendering engine — lines [1358–1386](../index.html#L1358-L1386)
+### 3.12 The rendering engine — lines [1367–1395](../index.html#L1367-L1395)
 
 ```js
 function render(force, focus) { ... }
@@ -476,14 +476,14 @@ The very last line, `render(true);`, draws the page for the first time when it l
 | --- | --- |
 | The site's colors | Color palette, lines [8–18](../index.html#L8-L18) |
 | Fonts | Lines [26–35](../index.html#L26-L35) |
-| The league name | `<title>` on line [6](../index.html#L6), the header on line [1377](../index.html#L1377), and the sign-in screen on line [833](../index.html#L833) |
+| The league name | `<title>` on line [6](../index.html#L6), the header on line [1386](../index.html#L1386), and the sign-in screen on line [830](../index.html#L830) |
 | Who the commissioner is | `ADMIN_EMAIL`, line [348](../index.html#L348) (and also `firestore.rules`) |
 | Event multipliers (e.g. majors = 3×) | `MULT`, line [353](../index.html#L353) |
 | The scoring formula | `pts`, lines [453–458](../index.html#L453-L458) |
-| Pick-locking rules | `submit`, lines [613–660](../index.html#L613-L660) (and also `firestore.rules`, which enforces them on the database side) |
-| How often the page checks the clock | `setInterval`, lines [533–536](../index.html#L533-L536) |
-| Chart line colors | `COLORS`, lines [1143–1152](../index.html#L1143-L1152) |
-| The tab names or order | `render`, lines [1370–1375](../index.html#L1370-L1375) |
+| Pick-locking rules | `submit`, lines [610–657](../index.html#L610-L657) (and also `firestore.rules`, which enforces them on the database side) |
+| How often the page checks the clock | `setInterval`, lines [530–533](../index.html#L530-L533) |
+| Chart line colors | `COLORS`, lines [1152–1161](../index.html#L1152-L1161) |
+| The tab names or order | `render`, lines [1379–1384](../index.html#L1379-L1384) |
 | Wording of error messages | Search the file for the message text (Ctrl+F) |
 
 > **One important safety note:** the checks in this file (like "you can't pick a golfer who has teed off") make the site friendly, but they aren't the real lock. A clever person could get around anything that runs in their own browser. The rules that truly can't be bypassed live in [`firestore.rules`](../firestore.rules), which runs on Google's servers. If you change a rule here, change it there too.

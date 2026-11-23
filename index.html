@@ -469,12 +469,9 @@
                 .map((d) => ({ id: d.id, ...d.data() }))
                 .sort((a, b) => a.date.localeCompare(b.date));
               if (!S.cur) {
-                const now = new Date();
                 S.cur =
                   (
-                    S.tours.find(
-                      (t) => new Date(t.date) > new Date(now - 4 * 864e5),
-                    ) ||
+                    S.tours.find((t) => !isOver(t)) ||
                     S.tours.at(-1) ||
                     {}
                   ).id || null;
@@ -934,10 +931,18 @@ ${S.err ? `<div class="err">${esc(S.err)}</div>` : ""}
       }
       // Cut line saved by sync.js from ESPN: "Projected Cut" during the cut round, "Cut" once it's made.
       function cutLabel(t) {
+        // ESPN's round status (e.g. "Round 4 - Suspended") while the event is still going.
+        const st =
+          t.status && !t.final
+            ? `<span>${esc(t.status)}</span>`
+            : "";
         const c = t.cut;
-        if (!c || typeof c.score !== "number") return "";
-        const s = c.score === 0 ? "E" : c.score > 0 ? `+${c.score}` : String(c.score);
-        return `<div class="mut" style="font-size:13px;white-space:nowrap">${c.final ? "Cut" : "Projected Cut"}: <b>${s}</b></div>`;
+        const cut =
+          c && typeof c.score === "number"
+            ? `<span>${c.final ? "Cut" : "Projected Cut"}: <b>${c.score === 0 ? "E" : c.score > 0 ? `+${c.score}` : String(c.score)}</b></span>`
+            : "";
+        if (!st && !cut) return "";
+        return `<div class="mut" style="font-size:13px;white-space:nowrap">${[st, cut].filter(Boolean).join(" · ")}</div>`;
       }
       function picksView() {
         const t = curT();
@@ -1081,7 +1086,11 @@ ${S.err ? `<div class="err">${esc(S.err)}</div>` : ""}
           B = w(b);
         return [...A].filter((y) => B.has(y)).length;
       };
-      const isOver = (t) => S.now > Date.parse(t.date) + 4.5 * 864e5;
+      // Over once sync.js has seen ESPN mark it complete (final). Tournaments ESPN is tracking (status set)
+      // can run into Monday after weather delays, so they get up to 7 days; others keep the old Monday-midday rule.
+      const isOver = (t) =>
+        t.final === true ||
+        S.now > Date.parse(t.date) + (t.status ? 7 : 4.5) * 864e5;
       function tourRows(t) {
         return S.users.map((u) => {
           const p = S.picks.find((x) => x.tid === t.id && x.uid === u.uid);

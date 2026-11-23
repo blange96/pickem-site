@@ -96,6 +96,30 @@ async function getCut(eventId) {
     return null;
   }
 }
+/* ---------- is the event finished? ---------- */
+// ESPN's own status, e.g. "Round 4 - In Progress", "Round 4 - Suspended", "Final".
+// Its endDate isn't updated for weather delays, so this is what decides when we stop syncing.
+function statusOf(event) {
+  const st = event?.status?.type || {};
+  return {
+    detail: event?.competitions?.[0]?.status?.type?.detail || st.detail || st.description || "",
+    done: st.completed === true || st.state === "post",
+  };
+}
+// Same, but by ESPN id from the leaderboard feed (for when the scoreboard has moved on). Never throws.
+async function getStatus(eventId) {
+  try {
+    const r = await fetch(LEADERBOARD + eventId, {
+      headers: { "User-Agent": "Mozilla/5.0" },
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const ev = (await r.json()).events?.[0];
+    return ev ? statusOf(ev) : null;
+  } catch (e) {
+    console.warn(`Couldn't read status for event ${eventId}: ${e.message}`);
+    return null;
+  }
+}
 const fmtCut = (c) =>
   c ? `cut ${fmtScore(c.score)} (round ${c.round}, ${c.count ?? "?"} players${c.final ? ", final" : ""})` : "no cut line";
 /* ---------- preview mode: just show ESPN's data ---------- */
@@ -105,7 +129,7 @@ async function preview(events) {
     const cut = await getCut(e.id);
     if (cut) cut.final = A.maxRound > cut.round;
     console.log(
-      `\n${e.name} (id ${e.id}) starts ${e.date}: ${A.rows.length} golfers, latest round ${A.maxRound}, started: ${A.started}, ${fmtCut(cut)}`,
+      `\n${e.name} (id ${e.id}) starts ${e.date}: ${A.rows.length} golfers, latest round ${A.maxRound}, started: ${A.started}, ${fmtCut(cut)}, status "${statusOf(e).detail}"${statusOf(e).done ? " (complete)" : ""}`,
     );
     A.rows
       .filter((r) => r.pos)
@@ -173,16 +197,23 @@ if (!events.length) {
 const now = Date.now();
 const snap = await db.collection("tournaments").get();
 // Only tournaments you've set up, from the moment the first group tees off (their earliest tee time)
-// through Monday midday UTC. This is what makes the 5-minute schedule "dynamic": the workflow wakes up
-// early on Thursday, and this check ends the run right away until the first tee time has passed.
+// until ESPN says the event is complete (saved as final: true). This is what makes the 5-minute schedule
+// "dynamic": the workflow wakes up early on Thursday, and this check ends the run right away until the
+// first tee time has passed. Weather delays that push play into Monday keep syncing until ESPN calls it
+// done; MAX_DAYS is only a safety net so a tournament ESPN never marks complete doesn't sync forever.
+const MAX_DAYS = 7;
 const active = snap.docs.filter((d) => {
-  const start = Date.parse(`${d.data().date}T00:00:00Z`);
+  const t = d.data();
+  const start = Date.parse(`${t.date}T00:00:00Z`);
   const first = Math.min(
-    ...Object.values(d.data().tee || {}).filter(Number.isFinite),
+    ...Object.values(t.tee || {}).filter(Number.isFinite),
   ); // Infinity if no tee times saved
+  if (!t.final && t.status && now > start + MAX_DAYS * DAY && now <= start + (MAX_DAYS + 1) * DAY)
+    console.warn(`${t.name} (${t.date}): ESPN still hasn't marked it complete after ${MAX_DAYS} days. No longer syncing; use the Admin paste box if needed.`);
   return (
+    !t.final &&
     now >= start &&
-    now <= start + 4.5 * DAY &&
+    now <= start + MAX_DAYS * DAY &&
     (!Number.isFinite(first) || now >= first)
   );
 });
@@ -208,9 +239,19 @@ for (const d of active) {
       (a, b) => overlap(t.name, b.name) - overlap(t.name, a.name),
     )[0];
     if (!ev || (near.length > 1 && !overlap(t.name, ev.name))) {
-      console.log(`${label}: no matching ESPN event, skipping.`);
+      // ESPN may move its scoreboard on to next week's event right after this one ends.
+      // If we saved ESPN's id on an earlier run, ask the leaderboard feed whether it's complete.
+      const st = t.espnId ? await getStatus(t.espnId) : null;
+      if (st?.done) {
+        if (DRY) console.log(`[dry run] ${label}: off ESPN's scoreboard, ESPN says "${st.detail}". Would mark final.`);
+        else {
+          await d.ref.update({ final: true, finalAt: Date.now(), status: st.detail });
+          console.log(`${label}: off ESPN's scoreboard, ESPN says "${st.detail}". Marked final.`);
+        }
+      } else console.log(`${label}: no matching ESPN event, skipping.`);
       continue;
     }
+    const st = statusOf(ev);
     const A = analyse(ev);
     if (!A.started) {
       console.log(`${label}: ESPN has no scores yet.`);
@@ -246,10 +287,12 @@ for (const d of active) {
     }
     const cut = await getCut(ev.id);
     if (cut) cut.final = A.maxRound > cut.round; // round 3 started: the cut is made
-    const msg = `${label}: matched ${Object.keys(live).length} of ${t.entries.length} entries to ESPN "${ev.name}" (${unmatched} ESPN golfers not in your field), ${A.rows.filter((r) => r.out).length} flagged out, ${fmtCut(cut)}`;
+    const msg = `${label}: matched ${Object.keys(live).length} of ${t.entries.length} entries to ESPN "${ev.name}" (${unmatched} ESPN golfers not in your field), ${A.rows.filter((r) => r.out).length} flagged out, ${fmtCut(cut)}, "${st.detail}"${st.done ? " -> marking final" : ""}`;
+    const update = { results, live, resultsAt: Date.now(), cut, espnId: ev.id, status: st.detail };
+    if (st.done) Object.assign(update, { final: true, finalAt: Date.now() });
     if (DRY) console.log(`[dry run] ${msg}`);
     else {
-      await d.ref.update({ results, live, resultsAt: Date.now(), cut });
+      await d.ref.update(update);
       console.log(msg);
     }
   } catch (e) {

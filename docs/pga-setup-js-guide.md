@@ -32,7 +32,7 @@ Before this script existed, the commissioner had to copy a table from the PGA To
 | Script | When | Job |
 | --- | --- | --- |
 | **`pga-setup.js`** (this one) | Tue & Wed | Sets up the tournament: field, odds, tee times. |
-| [`sync.js`](../sync.js) | Thu–Sun, every 5 min | Fills in live scores and positions. |
+| [`sync.js`](../sync.js) | Thu–Mon, every 5 min | Fills in live scores and positions. |
 | [`index.html`](../index.html) | Always | Shows everything and lets people pick. |
 
 ### Who runs it?

@@ -1,8 +1,9 @@
 name: Sync ESPN leaderboard
 on:
   schedule:
-    # Thu-Sun play, every 5 min from 5:00 to 22:59 Central (covers West Coast finishes)
-    - cron: "*/5 5-22 * * 0,4-6"
+    # Thu-Sun play plus Monday for weather-delayed finishes, every 5 min from 5:00 to 22:59 Central
+    # (covers West Coast finishes). On a normal Monday sync.js finds nothing active and stops right away.
+    - cron: "*/5 5-22 * * 0,1,4-6"
       timezone: "America/Chicago"
   workflow_dispatch:
     inputs:
