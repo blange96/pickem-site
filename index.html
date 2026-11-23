@@ -942,7 +942,7 @@ ${S.err ? `<div class="err">${esc(S.err)}</div>` : ""}
             ? `<span>${c.final ? "Cut" : "Projected Cut"}: <b>${c.score === 0 ? "E" : c.score > 0 ? `+${c.score}` : String(c.score)}</b></span>`
             : "";
         if (!st && !cut) return "";
-        return `<div class="mut" style="font-size:13px;white-space:nowrap">${[st, cut].filter(Boolean).join(" · ")}</div>`;
+        return `<div class="mut" style="font-size:13px;white-space:nowrap;display:flex;flex-direction:column;align-items:flex-end;text-align:right;margin-left:auto">${st}${cut}</div>`; // status on top, cut underneath
       }
       function picksView() {
         const t = curT();
