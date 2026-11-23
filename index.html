@@ -927,10 +927,10 @@ ${S.err ? `<div class="err">${esc(S.err)}</div>` : ""}
                 (a.grp === 0 ? b.pt - a.pt : a.tee - b.tee) ||
                 a.name.localeCompare(b.name),
         );
-        return `<div class="card" style="overflow-x:auto"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap"><h3>${esc(t.name)}</h3>${cutLabel(t)}</div><div class="mut" style="margin-bottom:8px">${(t.type || "regular")[0].toUpperCase() + (t.type || "regular").slice(1)} event · ${MULT[t.type] || 1}× multiplier</div><table>${heads("p")}${rows.map((r) => (r.me ? r.h.replace("<tr>", '<tr class="me">') : r.h)).join("")}</table></div>`;
+        return `<div class="card" style="overflow-x:auto"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap"><h3>${esc(t.name)}</h3>${cutLabel(t, "status")}</div><div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:8px"><div class="mut">${(t.type || "regular")[0].toUpperCase() + (t.type || "regular").slice(1)} event · ${MULT[t.type] || 1}× multiplier</div>${cutLabel(t, "cut")}</div><table>${heads("p")}${rows.map((r) => (r.me ? r.h.replace("<tr>", '<tr class="me">') : r.h)).join("")}</table></div>`;
       }
       // Cut line saved by sync.js from ESPN: "Projected Cut" during the cut round, "Cut" once it's made.
-      function cutLabel(t) {
+      function cutLabel(t, which) {
         // ESPN's round status (e.g. "Round 4 - Suspended") while the event is still going.
         const st =
           t.status && !t.final
@@ -941,8 +941,8 @@ ${S.err ? `<div class="err">${esc(S.err)}</div>` : ""}
           c && typeof c.score === "number"
             ? `<span>${c.final ? "Cut" : "Projected Cut"}: <b>${c.score === 0 ? "E" : c.score > 0 ? `+${c.score}` : String(c.score)}</b></span>`
             : "";
-        if (!st && !cut) return "";
-        return `<div class="mut" style="font-size:13px;white-space:nowrap;display:flex;flex-direction:column;align-items:flex-end;text-align:right;margin-left:auto">${st}${cut}</div>`; // status on top, cut underneath
+        const x = which === "status" ? st : cut; // status sits beside the title, cut beside the event/multiplier line
+        return x ? `<div class="mut" style="font-size:13px;white-space:nowrap;margin-left:auto">${x}</div>` : "";
       }
       function picksView() {
         const t = curT();
